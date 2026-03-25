@@ -4,7 +4,7 @@ local repo = "github.com/bmurray/pkl-zod"
 
 package {
   name = "pkl.typescript"
-  baseUri = "package://pkg.pkl-lang.org/bmurray/pkl-zod/\(name)"
+  baseUri = "package://pkg.pkl-lang.org/github.com/bmurray/pkl-zod/\(name)"
   packageZipUrl = "https://\(repo)/releases/download/\(name)@\(version)/\(name)@\(version).zip"
   version = read("VERSION.txt").text.trim()
   authors {
