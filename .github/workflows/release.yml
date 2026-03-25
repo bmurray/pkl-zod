@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Pkl
-        uses: pkl-community/setup-pkl@v1
+        uses: pkl-community/setup-pkl@v0
         with:
           pkl-version: "0.31.0"
 
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Pkl
-        uses: pkl-community/setup-pkl@v1
+        uses: pkl-community/setup-pkl@v0
         with:
           pkl-version: "0.31.0"
 
