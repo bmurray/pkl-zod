@@ -1,4 +1,7 @@
 /// Generates TypeScript sources from Pkl modules.
+///
+/// Automatically discovers and generates files for all imported modules,
+/// preserving directory structure and using cross-file imports.
 @ModuleInfo { minPklVersion = "0.31.0" }
 module pkl.typescript.Generator
 
@@ -35,7 +38,7 @@ function isEnumLike(decl: reflect.TypeDeclaration) =
           .map((it: reflect.StringLiteralType) -> utils.normalizeEnumName(it.value))
           .isDistinct
 
-/// Gather enum-like type aliases.
+/// Gather enum-like type aliases from declarations.
 function gatherEnums(decl: List<reflect.TypeDeclaration>): List<TsMapping> =
   decl
     .filter((it) -> isEnumLike(it))
@@ -46,10 +49,8 @@ function gatherEnums(decl: List<reflect.TypeDeclaration>): List<TsMapping> =
       })
     )
 
-/// Gather classes.
-///
-/// If the module companion class would produce the same name as an inner class,
-/// the companion class is skipped (the inner class takes precedence).
+/// Gather classes from declarations.
+/// Skips module companion classes that conflict with inner class names.
 function gatherClasses(decl: List<reflect.TypeDeclaration>): Mixin<List<TsMapping>> = (acc) ->
   let (
     companionConflicts =
@@ -73,99 +74,120 @@ function gatherClasses(decl: List<reflect.TypeDeclaration>): Mixin<List<TsMappin
         })
       )
 
+local inputMirror = reflect.Module(moduleToGenerate)
+
+/// All type mappings across the entire dependency tree.
 local allMappings: List<TsMapping> =
-  let (clazz = reflect.Module(moduleToGenerate).moduleClass)
+  let (clazz = inputMirror.moduleClass)
   let (declarations = gatherer.gatherTypeDeclarations(clazz, List()))
     gatherEnums(declarations) |> gatherClasses(declarations)
 
-local moduleMirror = reflect.Module(moduleToGenerate)
+/// All unique module URIs that have mappings.
+local discoveredModuleUris: List<String> =
+  allMappings
+    .map((it) -> it.source.enclosingDeclaration.uri)
+    .distinct
 
-/// Mappings for types declared in this module.
-local localMappings: List<TsMapping> =
-  allMappings.filter((it) -> utils.isLocalDeclaration(it.source, moduleMirror))
+/// Get the output file path (relative to output root) for a module URI.
+local function outputPath(moduleUri: String): String =
+  utils.moduleRelativePath(inputMirror.uri, moduleUri) + ".pkl.ts"
 
-/// Mappings for types from imported modules.
-local externalMappings: List<TsMapping> =
-  allMappings.filter((it) -> !utils.isLocalDeclaration(it.source, moduleMirror))
+/// Get mappings local to a specific module URI.
+local function mappingsForModule(moduleUri: String): List<TsMapping> =
+  allMappings.filter((it) -> it.source.enclosingDeclaration.uri == moduleUri)
 
-/// Group external mappings by their source module to generate import statements.
-local importStatements: String =
+/// Get the reflect.Module for a module URI from one of its mappings.
+local function moduleForUri(moduleUri: String): reflect.Module =
+  mappingsForModule(moduleUri).first.source.enclosingDeclaration
+
+/// Generate import statements for a module's external dependencies.
+local function importsForModule(moduleUri: String): String =
+  let (localMappings = mappingsForModule(moduleUri))
+  let (externalMappings = allMappings.filter((it) -> it.source.enclosingDeclaration.uri != moduleUri))
+  // Only import types that are actually referenced by local types
   let (
-    // Group external types by source module URI
-    byModule = externalMappings.groupBy((it) -> it.source.enclosingDeclaration.uri)
+    referencedExternal = externalMappings.filter((ext) ->
+      localMappings.any((loc) ->
+        loc is TsMapping.Class
+          && let (clazz = (loc as TsMapping.Class).clazz)
+            // Check if any property references this external type
+            clazz.properties.values.any((prop) ->
+              allMappings.findOrNull((m) -> m.source == ext.source) != null
+                && declarationReferencedByType(prop.type, ext.source)
+            )
+            // Or if the superclass is this external type
+            || (clazz.superclass != null
+              && ext is TsMapping.Class
+              && (ext as TsMapping.Class).clazz == clazz.superclass)
+      )
+    )
+  )
+  let (fromPath = utils.moduleRelativePath(inputMirror.uri, moduleUri))
+  let (
+    byModule = referencedExternal.groupBy((it) -> it.source.enclosingDeclaration.uri)
   )
     if (byModule.isEmpty)
       ""
     else
       byModule
-        .mapValues((_uri, mappings: List<TsMapping>) ->
-          let (moduleName = mappings.first.source.enclosingDeclaration.name)
-          let (fileStem = utils.moduleFileNameStem(moduleName))
+        .mapValues((extUri, mappings: List<TsMapping>) ->
+          let (toPath = utils.moduleRelativePath(inputMirror.uri, extUri))
+          let (importPath = utils.relativeImportPath(fromPath, toPath) + ".pkl")
           let (names = mappings.map((m) -> m.name).distinct.sort())
-            "import type { \(names.join(", ")) } from \"./\(fileStem).pkl\";"
+            "import type { \(names.join(", ")) } from \"\(importPath)\";"
         )
         .values
         .join("\n")
 
-local function hasUniqueNames(): Boolean =
-  let (names = localMappings.map((it) -> it.name))
-    if (names.isDistinct)
-      true
-    else
-      let (
-        duplicateNames =
-          localMappings.filter((it) -> localMappings.count((m) -> m.name == it.name) > 1)
-      )
-        throw(
-          """
-          Conflict: multiple Pkl declarations compute to TypeScript name `\(duplicateNames.first.name)`.
+/// Check if a reflect type references a given type declaration.
+local function declarationReferencedByType(type: reflect.Type, decl: reflect.TypeDeclaration): Boolean =
+  if (type is reflect.DeclaredType)
+    type.referent == decl
+      || type.typeArguments.any((t) -> declarationReferencedByType(t, decl))
+      || (type.referent is reflect.TypeAlias && declarationReferencedByType(type.referent.referent, decl))
+  else if (type is reflect.NullableType)
+    declarationReferencedByType(type.member, decl)
+  else if (type is reflect.UnionType)
+    type.members.any((t) -> declarationReferencedByType(t, decl))
+  else
+    false
 
-          To resolve this conflict, add a `@ts.Name` annotation to any of the conflicting declarations.
-
-          For example:
-
-          ```
-          @ts.Name { value = "CrabCakes" }
-          class Crab_Cakes
-          ```
-          """
-        )
-
-local generated: List<Gen>(hasUniqueNames()) =
-  localMappings.map((it) ->
-    if (it is TsMapping.Class)
-      new ClassGen {
-        mappings = allMappings
-        mapping = it
-      }
-    else
-      new EnumGen {
-        mappings = allMappings
-        mapping = it
-      })
-
-local fileName: String =
-  let (lastPart = moduleMirror.name.split(".").last)
-  let (first = lastPart[0].toLowerCase())
-    first + lastPart.drop(1) + ".pkl.ts"
-
-local fileContents: String =
-  new Listing {
-    utils.renderHeaderComment(moduleMirror)
-    ""
-    when (!importStatements.isEmpty) {
-      importStatements
+/// Generate the file contents for a single module.
+local function generateFileForModule(moduleUri: String): String =
+  let (mod = moduleForUri(moduleUri))
+  let (localMappings = mappingsForModule(moduleUri))
+  let (imports = importsForModule(moduleUri))
+  let (
+    generated = localMappings.map((it) ->
+      if (it is TsMapping.Class)
+        new ClassGen {
+          mappings = allMappings
+          mapping = it
+        }
+      else
+        new EnumGen {
+          mappings = allMappings
+          mapping = it
+        })
+  )
+    new Listing {
+      utils.renderHeaderComment(mod)
       ""
-    }
-    for (gen in generated) {
-      gen.contents
-    }
-  }.join("\n")
+      when (!imports.isEmpty) {
+        imports
+        ""
+      }
+      for (gen in generated) {
+        gen.contents
+      }
+    }.join("\n")
 
 output {
   files {
-    [fileName] {
-      text = fileContents
+    for (moduleUri in discoveredModuleUris) {
+      [outputPath(moduleUri)] {
+        text = generateFileForModule(moduleUri)
+      }
     }
   }
   text = throw("Generator.pkl only produces multiple-file output. Try running again with the -m flag.")

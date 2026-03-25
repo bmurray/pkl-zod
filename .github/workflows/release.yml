@@ -25,26 +25,25 @@ jobs:
       - name: Install TypeScript and Zod
         run: bun add -d typescript zod
 
-      - name: Generate TypeScript from test fixtures
+      - name: Generate TypeScript (auto-discovers imports)
         run: |
           pkl run gen.pkl --project-dir . -- \
-            tests/fixtures/AppConfig.pkl \
-            tests/fixtures/common/Types.pkl \
-            tests/fixtures/common/Auth.pkl \
             tests/fixtures/ServiceConfig.pkl \
-            --output-path test-output
+            tests/fixtures/AppConfig.pkl \
+            --output-path test-output/ts
 
-      - name: Generate Zod schemas from test fixtures
+      - name: Generate Zod schemas (auto-discovers imports)
         run: |
           pkl run zod/gen.pkl --project-dir . -- \
-            tests/fixtures/AppConfig.pkl \
-            tests/fixtures/common/Types.pkl \
-            tests/fixtures/common/Auth.pkl \
             tests/fixtures/ServiceConfig.pkl \
-            --output-path test-output
+            tests/fixtures/AppConfig.pkl \
+            --output-path test-output/zod
 
       - name: Verify generated code compiles
-        run: bunx tsc --noEmit --strict --target es2020 --moduleResolution bundler --ignoreConfig test-output/*.ts
+        run: |
+          bunx tsc --noEmit --strict --target es2020 --moduleResolution bundler --ignoreConfig \
+            test-output/ts/*.ts test-output/ts/**/*.ts \
+            test-output/zod/*.ts test-output/zod/**/*.ts
 
   release:
     needs: test

@@ -192,3 +192,50 @@ function moduleFileNameStem(moduleName: String): String =
 /// Check if a type declaration belongs to a given module.
 function isLocalDeclaration(decl: reflect.TypeDeclaration, `module`: reflect.Module): Boolean =
   decl.enclosingDeclaration.uri == `module`.uri
+
+/// Derive the output file path for a module, relative to a base module's directory.
+///
+/// Given a base URI like `file:///a/b/Root.pkl` and a target URI like `file:///a/b/common/Foo.pkl`,
+/// produces `common/foo` (the relative path stem).
+///
+/// If the target is in the same directory as the base, produces just the filename stem like `foo`.
+function moduleRelativePath(baseUri: String, targetUri: String): String =
+  let (baseDir = baseUri.replaceFirst(Regex(#"[^/]+$"#), ""))
+  let (targetPath = targetUri.replaceFirst(Regex(#"^file://"#), ""))
+  let (baseDirPath = baseDir.replaceFirst(Regex(#"^file://"#), ""))
+    if (targetPath.startsWith(baseDirPath))
+      let (relative = targetPath.drop(baseDirPath.length))
+      let (withoutExt = relative.replaceFirst(Regex(#"\.pkl$"#), ""))
+      let (parts = withoutExt.split("/"))
+      let (lastPart = parts.last)
+      let (lowered = lastPart[0].toLowerCase() + lastPart.drop(1))
+        if (parts.length == 1)
+          lowered
+        else
+          parts.dropLast(1).join("/") + "/" + lowered
+    else
+      // Fallback: use module name
+      moduleFileNameStem(targetPath.split("/").last.replaceFirst(Regex(#"\.pkl$"#), ""))
+
+/// Compute the relative import path from one output file to another.
+///
+/// Both paths are relative to the output root.
+/// E.g. from `serviceConfig` to `common/auth` → `./common/auth`
+/// E.g. from `common/auth` to `common/types` → `./types`
+/// E.g. from `sub/deep/foo` to `common/bar` → `../../common/bar`
+function relativeImportPath(fromPath: String, toPath: String): String =
+  let (fromParts = fromPath.split("/").dropLast(1)) // directory parts of the source file
+  let (toParts = toPath.split("/"))
+  // Find common prefix length
+  let (
+    commonLen = fromParts
+      .zip(toParts.take(toParts.length - 1))
+      .takeWhile((pair) -> pair.first == pair.second)
+      .length
+  )
+  let (ups = fromParts.length - commonLen)
+  let (remainder = toParts.drop(commonLen))
+    if (ups == 0)
+      "./" + remainder.join("/")
+    else
+      List.repeat(ups, "..").join("/") + "/" + remainder.join("/")

@@ -1,4 +1,7 @@
 /// Generates Zod validator schemas from Pkl modules.
+///
+/// Automatically discovers and generates files for all imported modules,
+/// preserving directory structure and using cross-file imports.
 @ModuleInfo { minPklVersion = "0.31.0" }
 module pkl.typescript.zod.ZodGenerator
 
@@ -34,7 +37,7 @@ function isEnumLike(decl: reflect.TypeDeclaration) =
           .map((it: reflect.StringLiteralType) -> utils.normalizeEnumName(it.value))
           .isDistinct
 
-/// Gather enum-like type aliases.
+/// Gather enum-like type aliases from declarations.
 function gatherEnums(decl: List<reflect.TypeDeclaration>): List<TsMapping> =
   decl
     .filter((it) -> isEnumLike(it))
@@ -45,10 +48,8 @@ function gatherEnums(decl: List<reflect.TypeDeclaration>): List<TsMapping> =
       })
     )
 
-/// Gather classes.
-///
-/// If the module companion class would produce the same name as an inner class,
-/// the companion class is skipped (the inner class takes precedence).
+/// Gather classes from declarations.
+/// Skips module companion classes that conflict with inner class names.
 function gatherClasses(decl: List<reflect.TypeDeclaration>): Mixin<List<TsMapping>> = (acc) ->
   let (
     companionConflicts =
@@ -72,76 +73,119 @@ function gatherClasses(decl: List<reflect.TypeDeclaration>): Mixin<List<TsMappin
         })
       )
 
+local inputMirror = reflect.Module(moduleToGenerate)
+
+/// All type mappings across the entire dependency tree.
 local allMappings: List<TsMapping> =
-  let (clazz = reflect.Module(moduleToGenerate).moduleClass)
+  let (clazz = inputMirror.moduleClass)
   let (declarations = gatherer.gatherTypeDeclarations(clazz, List()))
     gatherEnums(declarations) |> gatherClasses(declarations)
 
-local moduleMirror = reflect.Module(moduleToGenerate)
+/// All unique module URIs that have mappings.
+local discoveredModuleUris: List<String> =
+  allMappings
+    .map((it) -> it.source.enclosingDeclaration.uri)
+    .distinct
 
-/// Mappings for types declared in this module.
-local localMappings: List<TsMapping> =
-  allMappings.filter((it) -> utils.isLocalDeclaration(it.source, moduleMirror))
+/// Get the output file path (relative to output root) for a module URI.
+local function outputPath(moduleUri: String): String =
+  utils.moduleRelativePath(inputMirror.uri, moduleUri) + ".schema.ts"
 
-/// Mappings for types from imported modules.
-local externalMappings: List<TsMapping> =
-  allMappings.filter((it) -> !utils.isLocalDeclaration(it.source, moduleMirror))
+/// Get mappings local to a specific module URI.
+local function mappingsForModule(moduleUri: String): List<TsMapping> =
+  allMappings.filter((it) -> it.source.enclosingDeclaration.uri == moduleUri)
 
-/// Generate import statements for external types (both Schema and type).
-local importStatements: String =
+/// Get the reflect.Module for a module URI from one of its mappings.
+local function moduleForUri(moduleUri: String): reflect.Module =
+  mappingsForModule(moduleUri).first.source.enclosingDeclaration
+
+/// Generate import statements for a module's external dependencies.
+local function importsForModule(moduleUri: String): String =
+  let (localMappings = mappingsForModule(moduleUri))
+  let (externalMappings = allMappings.filter((it) -> it.source.enclosingDeclaration.uri != moduleUri))
   let (
-    byModule = externalMappings.groupBy((it) -> it.source.enclosingDeclaration.uri)
+    referencedExternal = externalMappings.filter((ext) ->
+      localMappings.any((loc) ->
+        loc is TsMapping.Class
+          && let (clazz = (loc as TsMapping.Class).clazz)
+            clazz.properties.values.any((prop) ->
+              allMappings.findOrNull((m) -> m.source == ext.source) != null
+                && declarationReferencedByType(prop.type, ext.source)
+            )
+            || (clazz.superclass != null
+              && ext is TsMapping.Class
+              && (ext as TsMapping.Class).clazz == clazz.superclass)
+      )
+    )
+  )
+  let (fromPath = utils.moduleRelativePath(inputMirror.uri, moduleUri))
+  let (
+    byModule = referencedExternal.groupBy((it) -> it.source.enclosingDeclaration.uri)
   )
     if (byModule.isEmpty)
       ""
     else
       byModule
-        .mapValues((_uri, mappings: List<TsMapping>) ->
-          let (moduleName = mappings.first.source.enclosingDeclaration.name)
-          let (fileStem = utils.moduleFileNameStem(moduleName))
+        .mapValues((extUri, mappings: List<TsMapping>) ->
+          let (toPath = utils.moduleRelativePath(inputMirror.uri, extUri))
+          let (importPath = utils.relativeImportPath(fromPath, toPath) + ".schema")
           let (names = mappings.flatMap((m) -> List("\(m.name)Schema", m.name)).distinct.sort())
-            "import { \(names.join(", ")) } from \"./\(fileStem).schema\";"
+            "import { \(names.join(", ")) } from \"\(importPath)\";"
         )
         .values
         .join("\n")
 
-local generated: List<String> =
-  localMappings.map((it) ->
-    if (it is TsMapping.Class)
-      new ZodClassGen {
-        mappings = allMappings
-        mapping = it
-      }.contents
-    else
-      new ZodEnumGen {
-        mapping = it as TsMapping.Enum
-      }.contents
+/// Check if a reflect type references a given type declaration.
+local function declarationReferencedByType(type: reflect.Type, decl: reflect.TypeDeclaration): Boolean =
+  if (type is reflect.DeclaredType)
+    type.referent == decl
+      || type.typeArguments.any((t) -> declarationReferencedByType(t, decl))
+      || (type.referent is reflect.TypeAlias && declarationReferencedByType(type.referent.referent, decl))
+  else if (type is reflect.NullableType)
+    declarationReferencedByType(type.member, decl)
+  else if (type is reflect.UnionType)
+    type.members.any((t) -> declarationReferencedByType(t, decl))
+  else
+    false
+
+/// Generate the file contents for a single module.
+local function generateFileForModule(moduleUri: String): String =
+  let (mod = moduleForUri(moduleUri))
+  let (localMappings = mappingsForModule(moduleUri))
+  let (imports = importsForModule(moduleUri))
+  let (
+    generated = localMappings.map((it) ->
+      if (it is TsMapping.Class)
+        new ZodClassGen {
+          mappings = allMappings
+          mapping = it
+        }.contents
+      else
+        new ZodEnumGen {
+          mapping = it as TsMapping.Enum
+        }.contents
+    )
   )
-
-local fileName: String =
-  let (lastPart = moduleMirror.name.split(".").last)
-  let (first = lastPart[0].toLowerCase())
-    first + lastPart.drop(1) + ".schema.ts"
-
-local fileContents: String =
-  new Listing {
-    utils.renderHeaderComment(moduleMirror)
-    ""
-    "import { z } from \"zod\";"
-    when (!importStatements.isEmpty) {
+    new Listing {
+      utils.renderHeaderComment(mod)
       ""
-      importStatements
-    }
-    ""
-    for (gen in generated) {
-      gen
-    }
-  }.join("\n")
+      "import { z } from \"zod\";"
+      when (!imports.isEmpty) {
+        ""
+        imports
+      }
+      ""
+      for (gen in generated) {
+        gen
+      }
+    }.join("\n")
 
 output {
   files {
-    [fileName] {
-      text = fileContents
+    for (moduleUri in discoveredModuleUris) {
+      [outputPath(moduleUri)] {
+        text = generateFileForModule(moduleUri)
+      }
     }
   }
   text = throw("ZodGenerator.pkl only produces multiple-file output. Try running again with the -m flag.")
