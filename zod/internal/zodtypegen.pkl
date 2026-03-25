@@ -14,7 +14,7 @@ function generateZodType(
   seenMappings: List<TsMapping>
 ): String =
   if (type is reflect.NullableType)
-    "\(generateZodType(type.member, enclosing, seenMappings)).nullable()"
+    "\(generateZodType(type.member, enclosing, seenMappings)).nullable().optional()"
   else if (type is reflect.DeclaredType)
     generateZodDeclaredType(type, enclosing, seenMappings)
   else if (type is reflect.ModuleType)
