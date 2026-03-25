@@ -1,0 +1,27 @@
+/// Generates TypeScript string literal union types from Pkl enum-like type aliases.
+@Unlisted
+module pkl.typescript.internal.EnumGen
+
+extends "Gen.pkl"
+
+import "pkl:reflect"
+
+import "TsMapping.pkl"
+import "utils.pkl"
+
+alias: reflect.TypeAlias = mapping.source as reflect.TypeAlias
+
+enumMapping: TsMapping.Enum = mapping as TsMapping.Enum
+
+contents =
+  new Listing {
+    when (alias.docComment != null) {
+      utils.renderDocComment(alias.docComment!!, "")
+    }
+    "export type \(enumMapping.name) ="
+    for (member in enumMapping.members) {
+      "  | \(utils.toTsString(member.pklName))"
+    }
+    ";"
+    ""
+  }.join("\n")

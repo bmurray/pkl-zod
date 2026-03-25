@@ -1,0 +1,14 @@
+/// Abstract base for generated TypeScript content.
+@Unlisted
+abstract module pkl.typescript.internal.Gen
+
+import "TsMapping.pkl"
+
+/// The generated contents for this particular mapping.
+mapping: TsMapping
+
+/// All mappings.
+mappings: List<TsMapping>
+
+/// The TypeScript contents.
+contents: String

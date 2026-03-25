@@ -1,0 +1,144 @@
+/// Generates TypeScript interfaces from Pkl classes.
+@Unlisted
+module pkl.typescript.internal.ClassGen
+
+extends "Gen.pkl"
+
+import "pkl:reflect"
+
+import "TsMapping.pkl"
+import "Type.pkl"
+import "typegen.pkl"
+import "utils.pkl"
+
+clazz: reflect.Class = mapping.source as reflect.Class
+
+classInfo: TsMapping.Class = mapping as TsMapping.Class
+
+contents =
+  new Listing {
+    when (clazz.docComment != null) {
+      utils.renderDocComment(clazz.docComment!!, "")
+    }
+    renderInterface()
+    ""
+  }.join("\n")
+
+local superClass: TsMapping.Class? =
+  mappings.findOrNull((c) -> c is TsMapping.Class && (c as TsMapping.Class).clazz == clazz.superclass)
+    as TsMapping.Class?
+
+local fields: Map<String, TsField> = getFields(clazz, mappings)
+
+local function doesNotInherit(clazz: reflect.Class?) =
+  clazz.superclass == null
+    || clazz.superclass.reflectee == Module
+    || clazz.superclass.reflectee == Typed
+
+local function getAllProperties(clazz: reflect.Class?): List<reflect.Property> =
+  if (clazz == null)
+    List()
+  else if (doesNotInherit(clazz))
+    clazz.properties.values
+  else
+    clazz.properties.values + getAllProperties(clazz.superclass!!)
+
+local function isSameType(typeA: reflect.Type, typeB: reflect.Type) =
+  if (typeA is reflect.DeclaredType && typeB is reflect.DeclaredType)
+    typeA.referent.reflectee == typeB.referent.reflectee
+  else if (typeA is reflect.NullableType && typeB is reflect.NullableType)
+    isSameType(typeA.member, typeB.member)
+  else if (typeA is reflect.NothingType && typeB is reflect.NothingType)
+    true
+  else if (typeA is reflect.UnknownType && typeB is reflect.UnknownType)
+    true
+  else if (typeA is reflect.StringLiteralType && typeB is reflect.StringLiteralType)
+    typeA.value == typeB.value
+  else if (typeA is reflect.UnionType && typeB is reflect.UnionType)
+    true
+  else
+    false
+
+/// Gather the interface fields for a class.
+function getFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<String, TsField> =
+  let (
+    superFields: Map<String, TsField> =
+      if (doesNotInherit(clazz))
+        Map()
+      else
+        getFields(clazz.superclass!!, mappings)
+  )
+  let (superProperties = getAllProperties(clazz.superclass))
+    clazz.properties
+      .filter((propName, prop: reflect.Property) ->
+        let (superProp = superProperties.findOrNull((it) -> it.name == prop.name))
+          if (prop.modifiers.contains("hidden"))
+            false
+          else if (superProp == null || isSameType(superProp.type, prop.type))
+            true
+          else if (prop.type is reflect.UnknownType)
+            false
+          else
+            throw(
+              """
+              Illegal: Class `\(clazz.reflectee)` overrides property `\(propName)` with a different type. This is not supported when generating TypeScript.
+
+              \(prop.location.displayUri)
+              """
+            )
+      )
+      .mapValues((_, prop: reflect.Property) -> new TsField {
+        isInherited = false
+        type = typegen.generateType(prop.type, clazz, mappings)
+        docComment = prop.docComment
+        name = utils.toTsPropertyName(prop)
+        property = prop
+      }) + superFields.mapValues((_, field) -> (field) { isInherited = true })
+
+/// Render the export interface declaration.
+local function renderInterface(): String =
+  let (ownFields = fields.filter((_, f) -> !f.isInherited))
+  let (
+    extendsClause =
+      if (superClass != null)
+        " extends \(superClass.name)"
+      else
+        ""
+  )
+    new Listing {
+      "export interface \(classInfo.name)\(extendsClause) {"
+      for (_, field in ownFields) {
+        renderField(field)
+      }
+      "}"
+    }.join("\n")
+
+/// Render a single interface field.
+local function renderField(field: TsField): String =
+  let (
+    typeStr =
+      // Check for @ts.Type annotation override
+      let (
+        typeOverride = field.property.annotations
+          .findOrNull((it) -> it.getClass().toString() == "pkl.typescript.ts#Type")
+      )
+        // noinspection UnresolvedElement
+        if (typeOverride != null)
+          typeOverride.value
+        else
+          field.type.render()
+  )
+    new Listing {
+      when (field.docComment != null) {
+        utils.renderDocComment(field.docComment!!, "  ")
+      }
+      "  \(field.name): \(typeStr);"
+    }.join("\n")
+
+local class TsField {
+  isInherited: Boolean
+  name: String
+  type: Type
+  docComment: String?
+  property: reflect.Property
+}

@@ -1,0 +1,61 @@
+module tests.fixtures.AppConfig
+
+/// The main application configuration.
+class Config {
+  /// The hostname to bind to.
+  host: String
+
+  /// The port number.
+  port: Int
+
+  /// Whether debug mode is enabled.
+  debug_mode: Boolean
+
+  /// Optional description.
+  description: String?
+
+  /// Tags for the application.
+  tags: List<String>
+
+  /// Metadata key-value pairs.
+  metadata: Mapping<String, String>
+
+  /// Database configuration.
+  database: DatabaseConfig
+}
+
+/// Database connection configuration.
+class DatabaseConfig {
+  /// Connection URL.
+  connection_url: String
+
+  /// Maximum pool size.
+  max_pool_size: Int
+
+  /// Connection timeout.
+  timeout: Duration
+}
+
+/// The environment to deploy to.
+typealias Environment = "development" | "staging" | "production"
+
+/// Log level setting.
+typealias LogLevel = "debug" | "info" | "warn" | "error"
+
+/// A server with an environment.
+open class Server {
+  hostname: String
+  environment: Environment
+}
+
+/// A web server with additional properties.
+class WebServer extends Server {
+  /// The port to listen on.
+  port: Int
+
+  /// SSL enabled.
+  ssl_enabled: Boolean
+}
+
+host: String = "localhost"
+port: Int = 8080

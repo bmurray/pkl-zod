@@ -1,0 +1,102 @@
+/// Generates Zod validator schemas from Pkl modules.
+@ModuleInfo { minPklVersion = "0.31.0" }
+module pkl.typescript.zod.ZodGenerator
+
+import "pkl:reflect"
+
+import "../GeneratorSettings.pkl"
+import "../internal/gatherer.pkl"
+import "../internal/TsMapping.pkl"
+import "../internal/utils.pkl"
+import "internal/ZodClassGen.pkl"
+import "internal/ZodEnumGen.pkl"
+
+/// Settings to control code generation.
+codegenSettings: GeneratorSettings
+
+/// The module that should be generated.
+moduleToGenerate: Module
+
+typealias EnumMember = reflect.StringLiteralType | reflect.NothingType
+
+/// Check if a type declaration is an enum-like string literal union.
+// noinspection TypeMismatch
+function isEnumLike(decl: reflect.TypeDeclaration) =
+  decl is reflect.TypeAlias
+    && let (referent = decl.referent)
+      referent is reflect.UnionType
+        && referent.members.every((t) -> t is EnumMember)
+        && referent.members
+          .filter((t) -> t is reflect.StringLiteralType)
+          .every((it: reflect.StringLiteralType) -> utils.canBeNormalizedToEnumName(it.value))
+        && referent.members
+          .filter((t) -> t is reflect.StringLiteralType)
+          .map((it: reflect.StringLiteralType) -> utils.normalizeEnumName(it.value))
+          .isDistinct
+
+/// Gather enum-like type aliases.
+function gatherEnums(decl: List<reflect.TypeDeclaration>): List<TsMapping> =
+  decl
+    .filter((it) -> isEnumLike(it))
+    .fold(List(), (acc, it) ->
+      acc.add(new TsMapping.Enum {
+        source = it
+        seenMappings = acc
+      })
+    )
+
+/// Gather classes.
+function gatherClasses(decl: List<reflect.TypeDeclaration>): Mixin<List<TsMapping>> = (acc) ->
+  decl
+    .filter((it) -> it is reflect.Class)
+    .fold(acc, (accum, it) ->
+      accum.add(new TsMapping.Class {
+        source = it
+        seenMappings = accum
+      })
+    )
+
+local allMappings: List<TsMapping> =
+  let (clazz = reflect.Module(moduleToGenerate).moduleClass)
+  let (declarations = gatherer.gatherTypeDeclarations(clazz, List()))
+    gatherEnums(declarations) |> gatherClasses(declarations)
+
+local moduleMirror = reflect.Module(moduleToGenerate)
+
+local generated: List<String> =
+  allMappings.map((it) ->
+    if (it is TsMapping.Class)
+      new ZodClassGen {
+        mappings = allMappings
+        mapping = it
+      }.contents
+    else
+      new ZodEnumGen {
+        mapping = it as TsMapping.Enum
+      }.contents
+  )
+
+local fileName: String =
+  let (lastPart = moduleMirror.name.split(".").last)
+  let (first = lastPart[0].toLowerCase())
+    first + lastPart.drop(1) + ".schema.ts"
+
+local fileContents: String =
+  new Listing {
+    utils.renderHeaderComment(moduleMirror)
+    ""
+    "import { z } from \"zod\";"
+    ""
+    for (gen in generated) {
+      gen
+    }
+  }.join("\n")
+
+output {
+  files {
+    [fileName] {
+      text = fileContents
+    }
+  }
+  text = throw("ZodGenerator.pkl only produces multiple-file output. Try running again with the -m flag.")
+}

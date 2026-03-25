@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pkl
+        uses: pkl-community/setup-pkl@v1
+        with:
+          pkl-version: "0.31.0"
+
+      - name: Verify package builds
+        run: pkl project package . --output-path out/
+
+      - name: Generate TypeScript from test fixtures
+        run: |
+          pkl run gen.pkl --project-dir . -- tests/fixtures/AppConfig.pkl --output-path test-output
+
+      - name: Generate Zod schemas from test fixtures
+        run: |
+          pkl run zod/gen.pkl --project-dir . -- tests/fixtures/AppConfig.pkl --output-path test-output
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install TypeScript and Zod
+        run: |
+          cd test-output
+          bun init -y
+          bun add -d typescript zod
+
+      - name: Verify generated TypeScript compiles
+        run: |
+          cd test-output
+          bunx tsc --noEmit --strict --target es2020 --moduleResolution bundler appConfig.pkl.ts
+
+      - name: Verify generated Zod schemas compile
+        run: |
+          cd test-output
+          bunx tsc --noEmit --strict --target es2020 --moduleResolution bundler appConfig.schema.ts
+
+      - name: Show generated output
+        run: |
+          echo "=== TypeScript ==="
+          cat test-output/appConfig.pkl.ts
+          echo ""
+          echo "=== Zod ==="
+          cat test-output/appConfig.schema.ts

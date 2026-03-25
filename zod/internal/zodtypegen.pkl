@@ -1,0 +1,156 @@
+/// Utilities for generating Zod schema calls from Pkl reflection types.
+@Unlisted
+module pkl.typescript.zod.internal.zodtypegen
+
+import "pkl:reflect"
+
+import "../../internal/TsMapping.pkl"
+import "../../internal/utils.pkl"
+
+/// Generate a Zod schema expression string from a Pkl reflect type.
+function generateZodType(
+  type: reflect.Type,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): String =
+  if (type is reflect.NullableType)
+    "\(generateZodType(type.member, enclosing, seenMappings)).nullable()"
+  else if (type is reflect.DeclaredType)
+    generateZodDeclaredType(type, enclosing, seenMappings)
+  else if (type is reflect.ModuleType)
+    let (moduleClass = enclosing.enclosingDeclaration.moduleClass)
+      generateZodType(reflect.DeclaredType(moduleClass), moduleClass, seenMappings)
+  else if (type is reflect.UnionType)
+    generateZodUnionType(type, enclosing, seenMappings)
+  else if (type is reflect.UnknownType)
+    "z.unknown()"
+  else if (type is reflect.NothingType)
+    "z.never()"
+  else if (type is reflect.StringLiteralType)
+    "z.literal(\(utils.toTsString(type.value)))"
+  else
+    throw("Unsure how to generate Zod schema for this type: \(type)")
+
+/// Generate Zod for a union type.
+function generateZodUnionType(
+  type: reflect.UnionType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): String =
+  let (mappedType = seenMappings.findOrNull((c) -> c.source == type))
+    if (mappedType != null)
+      "\(utils.toTsTypeName(mappedType.source))Schema"
+    // All string literals → z.enum(["a", "b", "c"])
+    else if (type.members.every((it) -> it is reflect.StringLiteralType || it is reflect.NothingType))
+      let (literals = type.members.filter((it) -> it is reflect.StringLiteralType))
+      let (values = literals.map((it) -> utils.toTsString((it as reflect.StringLiteralType).value)))
+        "z.enum([\(values.join(", "))])"
+    // All string literals plus String → just z.string()
+    else if (type.members.every((it) -> it is reflect.StringLiteralType || it == reflect.stringType))
+      "z.string()"
+    // General union → z.union([...])
+    else
+      let (
+        members = type.members
+          .filter((it) -> !(it is reflect.NothingType))
+          .map((it) -> generateZodType(it, enclosing, seenMappings))
+      )
+        "z.union([\(members.join(", "))])"
+
+/// Generate Zod for a declared type.
+function generateZodDeclaredType(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): String =
+  let (referent = type.referent)
+  let (reflectee = type.referent.reflectee)
+  let (mapped = seenMappings.findOrNull((it) -> it.source == referent))
+    if (mapped != null)
+      "\(utils.toTsTypeName(mapped.source))Schema"
+    else if (mappedTypes.containsKey(reflectee))
+      mappedTypes[reflectee]
+    else if (referent is reflect.TypeAlias)
+      generateZodType(referent.referent, enclosing, seenMappings)
+    else if (reflectee == List || reflectee == Listing)
+      generateZodListing(type, enclosing, seenMappings)
+    else if (reflectee == Map || reflectee == Mapping)
+      generateZodMapping(type, enclosing, seenMappings)
+    else if (reflectee == Set)
+      generateZodSet(type, enclosing, seenMappings)
+    else if (reflectee == Pair)
+      generateZodPair(type, enclosing, seenMappings)
+    else
+      throw("Cannot generate Zod schema for \(type.referent.name).")
+
+/// Generate z.array() from List/Listing.
+function generateZodListing(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): String =
+  let (typeArg = type.typeArguments.getOrNull(0))
+    if (typeArg == null)
+      "z.array(z.unknown())"
+    else
+      "z.array(\(generateZodType(typeArg, enclosing, seenMappings)))"
+
+/// Generate z.record() from Map/Mapping.
+function generateZodMapping(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): String =
+  let (typeArgKey = type.typeArguments.getOrNull(0))
+  let (typeArgValue = type.typeArguments.getOrNull(1))
+  let (keySchema = if (typeArgKey == null) "z.string()" else generateZodType(typeArgKey, enclosing, seenMappings))
+  let (valSchema = if (typeArgValue == null) "z.unknown()" else generateZodType(typeArgValue, enclosing, seenMappings))
+    "z.record(\(keySchema), \(valSchema))"
+
+/// Generate z.set() from Set.
+function generateZodSet(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): String =
+  let (typeArg = type.typeArguments.getOrNull(0))
+    if (typeArg == null)
+      "z.set(z.unknown())"
+    else
+      "z.set(\(generateZodType(typeArg, enclosing, seenMappings)))"
+
+/// Generate z.tuple() from Pair.
+function generateZodPair(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): String =
+  let (schemas = type.typeArguments.map((t) -> generateZodType(t, enclosing, seenMappings)))
+    "z.tuple([\(schemas.join(", "))])"
+
+/// Mapping of Pkl built-in types to Zod schema expressions.
+mappedTypes: Mapping<Class | TypeAlias, String> = new {
+  [Int] = "z.number().int()"
+  [Int8] = "z.number().int()"
+  [Int16] = "z.number().int()"
+  [Int32] = "z.number().int()"
+  [UInt] = "z.number().int().nonnegative()"
+  [UInt8] = "z.number().int().nonnegative()"
+  [UInt16] = "z.number().int().nonnegative()"
+  [UInt32] = "z.number().int().nonnegative()"
+  [Number] = "z.number()"
+  [Float] = "z.number()"
+  [String] = "z.string()"
+  [Boolean] = "z.boolean()"
+  [Null] = "z.null()"
+  [Any] = "z.unknown()"
+  [Duration] = "z.object({ value: z.number(), unit: z.string() })"
+  [DurationUnit] = "z.string()"
+  [DataSize] = "z.object({ value: z.number(), unit: z.string() })"
+  [DataSizeUnit] = "z.string()"
+  [Dynamic] = "z.record(z.string(), z.unknown())"
+  [Regex] = "z.instanceof(RegExp)"
+  [Uri] = "z.string().url()"
+  [Class] = "z.string()"
+  [TypeAlias] = "z.string()"
+}

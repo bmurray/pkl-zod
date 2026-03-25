@@ -1,0 +1,116 @@
+/// Representation of a type in TypeScript.
+@Unlisted
+abstract module pkl.typescript.internal.Type
+
+import "Type.pkl"
+
+/// The TypeScript imports required by this type (module paths).
+imports: List<String>
+
+/// Render this type as a TypeScript type expression.
+abstract function render(): String
+
+/// A simple named type like `string`, `number`, `boolean`, or a user-defined interface name.
+class Simple extends Type {
+  typeName: String
+
+  /// The module this type is imported from, if any.
+  importFrom: String?
+
+  imports = if (importFrom != null) List(importFrom!!) else List()
+
+  function render() = typeName
+}
+
+/// An array type: `T[]`
+class Array extends Type {
+  elem: Type
+
+  imports = elem.imports
+
+  function render() =
+    let (inner = elem.render())
+      // Wrap union types in parens for array: (A | B)[]
+      if (inner.contains("|"))
+        "(\(inner))[]"
+      else
+        "\(inner)[]"
+}
+
+/// A tuple type: `[A, B]`
+class Tuple extends Type {
+  elements: List<Type>
+
+  imports = elements.flatMap((t) -> t.imports)
+
+  function render() = "[\(elements.map((t) -> t.render()).join(", "))]"
+}
+
+/// A Record type: `Record<K, V>`
+class Record extends Type {
+  key: Type
+  value: Type
+
+  imports = key.imports + value.imports
+
+  function render() = "Record<\(key.render()), \(value.render())>"
+}
+
+/// A Map type: `Map<K, V>`
+class MapType extends Type {
+  key: Type
+  value: Type
+
+  imports = key.imports + value.imports
+
+  function render() = "Map<\(key.render()), \(value.render())>"
+}
+
+/// A Set type: `Set<T>`
+class SetType extends Type {
+  elem: Type
+
+  imports = elem.imports
+
+  function render() = "Set<\(elem.render())>"
+}
+
+/// A nullable type: `T | null`
+class Nullable extends Type {
+  member: Type
+
+  imports = member.imports
+
+  function render() =
+    let (inner = member.render())
+      "\(inner) | null"
+}
+
+/// A union type: `A | B | C`
+class Union extends Type {
+  members: List<Type>
+
+  imports = members.flatMap((t) -> t.imports)
+
+  function render() = members.map((t) -> t.render()).join(" | ")
+}
+
+/// A string literal type: `"foo"`
+class StringLiteral extends Type {
+  value: String
+
+  imports = List()
+
+  function render() = "\"" + value + "\""
+}
+
+/// An inline object type: `{ value: number; unit: string }`
+class ObjectLiteral extends Type {
+  fields: Mapping<String, Type>
+
+  imports = fields.values.flatMap((t) -> t.imports)
+
+  function render() =
+    let (parts = fields.keys.map((k) -> "\(k): \(fields[k].render())"))
+      "{ " + parts.join("; ") + " }"
+}

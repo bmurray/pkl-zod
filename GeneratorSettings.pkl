@@ -1,0 +1,11 @@
+/// Settings to configure TypeScript code generation for Pkl files.
+module pkl.typescript.GeneratorSettings
+
+/// The base path for module output.
+///
+/// This determines the relative path that generated TypeScript files will be written to.
+/// If empty, writes files relative to the current directory.
+basePath: String = ""
+
+/// Print out the names of the files that will be generated, but skip writing anything to disk.
+dryRun: Boolean = false

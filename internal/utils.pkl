@@ -1,0 +1,183 @@
+/// Utility functions for TypeScript code generation.
+@Unlisted
+module pkl.typescript.internal.utils
+
+import "pkl:reflect"
+
+/// TypeScript reserved words.
+keywords: List<String> = List(
+  "abstract",
+  "any",
+  "as",
+  "asserts",
+  "async",
+  "await",
+  "bigint",
+  "boolean",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "constructor",
+  "continue",
+  "debugger",
+  "declare",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "from",
+  "function",
+  "get",
+  "if",
+  "implements",
+  "import",
+  "in",
+  "infer",
+  "instanceof",
+  "interface",
+  "is",
+  "keyof",
+  "let",
+  "module",
+  "namespace",
+  "never",
+  "new",
+  "null",
+  "number",
+  "object",
+  "of",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "readonly",
+  "require",
+  "return",
+  "set",
+  "static",
+  "string",
+  "super",
+  "switch",
+  "symbol",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "type",
+  "typeof",
+  "undefined",
+  "unique",
+  "unknown",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield"
+)
+
+/// Split a name on non-letter, non-digit characters.
+function splitNameOnNonLettersOrDigits(name: String) = name.split(Regex(#"(?u)[^\p{L}\d]"#))
+
+/// Convert a name to PascalCase for TypeScript types/interfaces.
+///
+/// 1. Split on non-alphanumeric characters, capitalize each part.
+/// 2. If a name does not start with a letter, prefix with `_`.
+/// 3. If the name conflicts with a TS keyword, prefix with `_`.
+function toPascalCase(name: String): String =
+  let (parts = splitNameOnNonLettersOrDigits(name))
+  let (pascaled = parts.map((p) -> p.capitalize()).join(""))
+  let (result = if (pascaled.isEmpty || pascaled[0].matches(Regex(#"[^A-Za-z]"#))) "_" + pascaled else pascaled)
+    if (keywords.contains(result))
+      "_\(result)"
+    else
+      result
+
+/// Convert a name to camelCase for TypeScript properties.
+///
+/// Same as PascalCase but the first character is lowercased.
+function toCamelCase(name: String): String =
+  let (pascal = toPascalCase(name))
+    if (pascal.isEmpty)
+      pascal
+    else
+      pascal[0].toLowerCase() + pascal.drop(1)
+
+/// Convert a Pkl declaration to a TypeScript type name (PascalCase).
+///
+/// If the declaration has a `@ts.Name` annotation, use it. Otherwise normalize.
+// noinspection UnresolvedElement
+function toTsTypeName(source: reflect.Declaration): String =
+  source.annotations.findOrNull((it) -> it.getClass().toString() == "pkl.typescript.ts#Name")?.value
+    ??
+    // Edge case: if the source is the module's companion class, use the module name.
+    let (
+      _name =
+        if (source is reflect.Class && source.enclosingDeclaration.moduleClass == source)
+          source.enclosingDeclaration.name.split(".").last
+        else
+          source.name
+    )
+      toPascalCase(_name)
+
+/// Convert a Pkl property name to a TypeScript property name (camelCase).
+///
+/// If the property has a `@ts.Name` annotation, use it. Otherwise normalize.
+// noinspection UnresolvedElement
+function toTsPropertyName(source: reflect.Declaration): String =
+  source.annotations.findOrNull((it) -> it.getClass().toString() == "pkl.typescript.ts#Name")?.value
+    ?? toCamelCase(source.name)
+
+/// Check if a string can be normalized to a valid enum member name.
+function canBeNormalizedToEnumName(name: String) =
+  name == "" || !splitNameOnNonLettersOrDigits(name).isEmpty
+
+/// Normalize a string to a valid enum member name.
+function normalizeEnumName(name: String) =
+  if (name == "")
+    "Empty"
+  else
+    toPascalCase(name)
+
+/// Render a documentation comment for TypeScript.
+function renderDocComment(docComment: String, indent: String) =
+  let (lines = docComment.split(Regex(#"\r?\n"#)))
+    if (lines.length == 1)
+      "\(indent)/** \(lines.first) */"
+    else
+      new Listing {
+        "\(indent)/**"
+        for (line in lines) {
+          if (line.trim().isBlank)
+            "\(indent) *"
+          else
+            "\(indent) * \(line)"
+        }
+        "\(indent) */"
+      }.join("\n")
+
+/// Render the file header comment.
+function renderHeaderComment(`module`: reflect.Module) =
+  "// Code generated from Pkl module `\(`module`.name)`. DO NOT EDIT."
+
+/// Render TypeScript import statements.
+///
+/// Each import is a relative path to another generated file.
+function renderImports(imports: List<Pair<String, String>>): String =
+  if (imports.isEmpty)
+    ""
+  else
+    imports
+      .map((imp) -> "import type { \(imp.first) } from \"\(imp.second)\";")
+      .join("\n")
+
+/// Escape a string for use as a TypeScript string literal.
+function toTsString(str: String): String =
+  "\"" + str.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n") + "\""

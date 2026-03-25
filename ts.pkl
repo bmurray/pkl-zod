@@ -1,0 +1,33 @@
+/// TypeScript-specific annotations for controlling code generation.
+module pkl.typescript.ts
+
+import "internal/utils.pkl"
+
+/// A valid TypeScript identifier.
+typealias TsName = String(!utils.keywords.contains(this) && matches(Regex(#"(?u)\p{L}[\p{L}\d]*"#)))
+
+/// Override the generated TypeScript name for the annotated module, class, typealias, or property.
+///
+/// Example:
+///
+/// ```
+/// @ts.Name { value = "UserProfile" }
+/// class User_Profile
+/// ```
+class Name extends Annotation {
+  value: TsName
+}
+
+/// Override the generated TypeScript type for the annotated property.
+///
+/// The value is rendered verbatim in the generated output.
+///
+/// Example:
+///
+/// ```
+/// @ts.Type { value = "Date" }
+/// createdAt: String
+/// ```
+class Type extends Annotation {
+  value: String
+}

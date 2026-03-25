@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pkl
+        uses: pkl-community/setup-pkl@v1
+        with:
+          pkl-version: "0.31.0"
+
+      - name: Generate TypeScript from test fixtures
+        run: |
+          pkl run gen.pkl --project-dir . -- tests/fixtures/AppConfig.pkl --output-path test-output
+
+      - name: Generate Zod schemas from test fixtures
+        run: |
+          pkl run zod/gen.pkl --project-dir . -- tests/fixtures/AppConfig.pkl --output-path test-output
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Verify generated code compiles
+        run: |
+          cd test-output
+          bun init -y
+          bun add -d typescript zod
+          bunx tsc --noEmit --strict --target es2020 --moduleResolution bundler appConfig.pkl.ts
+          bunx tsc --noEmit --strict --target es2020 --moduleResolution bundler appConfig.schema.ts
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pkl
+        uses: pkl-community/setup-pkl@v1
+        with:
+          pkl-version: "0.31.0"
+
+      - name: Validate version matches tag
+        run: |
+          GIT_TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${GIT_TAG#v}"
+          EXPECTED_VERSION=$(cat VERSION.txt | tr -d '[:space:]')
+          if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "ERROR: Tag version ($VERSION) does not match VERSION.txt ($EXPECTED_VERSION)"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build Pkl package
+        run: pkl project package . --output-path out/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "v${{ env.VERSION }}"
+          generate_release_notes: true
+          files: |
+            out/pkl.typescript@${{ env.VERSION }}.zip
+            out/pkl.typescript@${{ env.VERSION }}.zip.sha256
+
+      - name: Create Pkl package tag release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "pkl.typescript@${{ env.VERSION }}"
+          name: "pkl.typescript@${{ env.VERSION }}"
+          body: "Pkl package release for pkl.typescript@${{ env.VERSION }}"
+          files: |
+            out/pkl.typescript@${{ env.VERSION }}.zip
+            out/pkl.typescript@${{ env.VERSION }}.zip.sha256

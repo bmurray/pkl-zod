@@ -1,0 +1,89 @@
+/// Generates Zod object schemas from Pkl classes.
+@Unlisted
+module pkl.typescript.zod.internal.ZodClassGen
+
+import "pkl:reflect"
+
+import "../../internal/TsMapping.pkl"
+import "../../internal/utils.pkl"
+import "zodtypegen.pkl"
+
+/// The mapping for this class.
+mapping: TsMapping.Class
+
+/// All mappings.
+mappings: List<TsMapping>
+
+local clazz: reflect.Class = mapping.clazz
+
+/// The generated Zod schema contents.
+contents: String =
+  let (ownFields = getOwnFields(clazz, mappings))
+  let (schemaName = "\(mapping.name)Schema")
+  let (
+    superMapping: TsMapping.Class? =
+      mappings.findOrNull((c) -> c is TsMapping.Class && (c as TsMapping.Class).clazz == clazz.superclass)
+        as TsMapping.Class?
+  )
+  let (
+    baseSchema =
+      if (superMapping != null)
+        "\(superMapping.name)Schema.extend({\(renderFields(ownFields))})"
+      else
+        "z.object({\(renderFields(ownFields))})"
+  )
+    new Listing {
+      when (clazz.docComment != null) {
+        utils.renderDocComment(clazz.docComment!!, "")
+      }
+      "export const \(schemaName) = \(baseSchema);"
+      "export type \(mapping.name) = z.infer<typeof \(schemaName)>;"
+      ""
+    }.join("\n")
+
+local function doesNotInherit(clazz: reflect.Class?) =
+  clazz.superclass == null
+    || clazz.superclass.reflectee == Module
+    || clazz.superclass.reflectee == Typed
+
+local function getAllProperties(clazz: reflect.Class?): List<reflect.Property> =
+  if (clazz == null)
+    List()
+  else if (doesNotInherit(clazz))
+    clazz.properties.values
+  else
+    clazz.properties.values + getAllProperties(clazz.superclass!!)
+
+/// Get only the own (non-inherited) fields for a class.
+function getOwnFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<String, ZodField> =
+  let (superProperties = getAllProperties(clazz.superclass))
+    clazz.properties
+      .filter((propName, prop: reflect.Property) ->
+        let (superProp = superProperties.findOrNull((it) -> it.name == prop.name))
+          if (prop.modifiers.contains("hidden"))
+            false
+          else if (superProp == null)
+            true
+          else if (prop.type is reflect.UnknownType)
+            false
+          else
+            true
+      )
+      .mapValues((_, prop: reflect.Property) -> new ZodField {
+        name = utils.toTsPropertyName(prop)
+        zodType = zodtypegen.generateZodType(prop.type, clazz, mappings)
+      })
+
+/// Render object fields as Zod properties.
+local function renderFields(fields: Map<String, ZodField>): String =
+  if (fields.isEmpty)
+    ""
+  else
+    "\n" + fields.values.map((f) ->
+      "  \(f.name): \(f.zodType),"
+    ).join("\n") + "\n"
+
+local class ZodField {
+  name: String
+  zodType: String
+}

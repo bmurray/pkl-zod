@@ -1,0 +1,21 @@
+amends "pkl:Project"
+
+local repo = "github.com/bmurray/pkl-zod"
+
+package {
+  name = "pkl.typescript"
+  baseUri = "package://pkg.pkl-lang.org/pkl-typescript/\(name)"
+  packageZipUrl = "https://\(repo)/releases/download/\(name)@\(version)/\(name)@\(version).zip"
+  version = read("VERSION.txt").text.trim()
+  authors {
+    "Brian Murray <bmurray@users.noreply.github.com>"
+  }
+  sourceCodeUrlScheme = "https://\(repo)/tree/v\(version)/pkl-zod%{path}#L%{line}-L%{endLine}"
+  sourceCode = "https://\(repo)"
+  description = "Pkl code generators for TypeScript interfaces and Zod validator schemas"
+  license = "MIT"
+  exclude {
+    "tests"
+    "tests/**"
+  }
+}

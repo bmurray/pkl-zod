@@ -1,0 +1,72 @@
+/// Maps Pkl declarations to TypeScript output info.
+@Unlisted
+abstract module pkl.typescript.internal.TsMapping
+
+import "pkl:reflect"
+
+import "TsMapping.pkl"
+import "Type.pkl"
+import "utils.pkl"
+
+/// The TypeScript type name for this declaration.
+name: String
+
+/// All names exposed by this mapping.
+names: List<String>
+
+/// Previously seen mappings (for deduplication).
+seenMappings: List<TsMapping>
+
+/// The source Pkl declaration.
+source: reflect.TypeDeclaration
+
+/// The TypeScript type for this declaration.
+type: Type
+
+/// Names already used in this module.
+existingNames: List<String> =
+  seenMappings.flatMap((it) -> it.names)
+
+/// A class mapping → generates an interface.
+class Class extends TsMapping {
+  local self = this
+
+  clazz: reflect.Class = self.source as reflect.Class
+
+  name = utils.toTsTypeName(clazz)
+
+  names = List(name)
+
+  type = new Type.Simple { typeName = name }
+}
+
+/// An enum mapping → generates a string literal union type.
+class Enum extends TsMapping {
+  local self = this
+
+  local union: reflect.UnionType = alias.referent as reflect.UnionType
+
+  alias: reflect.TypeAlias = self.source as reflect.TypeAlias
+
+  name = utils.toTsTypeName(self.source)
+
+  names = List(name)
+
+  type = new Type.Simple { typeName = name }
+
+  /// The string literal members of this enum.
+  members: List<EnumMember> =
+    union.members
+      .filter((it) -> !(it is reflect.NothingType))
+      .fold(List(), (acc: List<EnumMember>, mem) ->
+        acc.add(new EnumMember {
+          pklName = (mem as reflect.StringLiteralType).value
+          tsName = utils.normalizeEnumName(pklName)
+        })
+      )
+}
+
+class EnumMember {
+  pklName: String
+  tsName: String
+}

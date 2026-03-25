@@ -1,0 +1,192 @@
+/// Utilities for generating TypeScript types from Pkl reflection types.
+@Unlisted
+module pkl.typescript.internal.typegen
+
+import "pkl:reflect"
+
+import "TsMapping.pkl"
+import "Type.pkl"
+
+/// Generate a TypeScript Type from a Pkl reflect type.
+function generateType(
+  type: reflect.Type,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): Type =
+  if (type is reflect.NullableType)
+    new Type.Nullable {
+      member = generateType(type.member, enclosing, seenMappings)
+    }
+  else if (type is reflect.DeclaredType)
+    generateDeclaredType(type, enclosing, seenMappings)
+  else if (type is reflect.ModuleType)
+    let (moduleClass = enclosing.enclosingDeclaration.moduleClass)
+      generateType(reflect.DeclaredType(moduleClass), moduleClass, seenMappings)
+  else if (type is reflect.UnionType)
+    generateUnionType(type, enclosing, seenMappings)
+  else if (type is reflect.UnknownType)
+    new Type.Simple { typeName = "unknown" }
+  else if (type is reflect.NothingType)
+    new Type.Simple { typeName = "never" }
+  else if (type is reflect.StringLiteralType)
+    new Type.StringLiteral { value = type.value }
+  else
+    throw("Unsure how to generate TypeScript for this type: \(type)")
+
+/// Generate a TypeScript type from a union type.
+function generateUnionType(
+  type: reflect.UnionType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): Type =
+  let (mappedType = seenMappings.findOrNull((c) -> c.source == type))
+    if (mappedType != null)
+      mappedType.type
+    // All string literals → string literal union type
+    else if (type.members.every((it) -> it is reflect.StringLiteralType || it is reflect.NothingType))
+      let (literals = type.members.filter((it) -> it is reflect.StringLiteralType))
+        if (literals.length == 1)
+          new Type.StringLiteral { value = (literals.first as reflect.StringLiteralType).value }
+        else
+          new Type.Union {
+            members = literals.map((it) ->
+              new Type.StringLiteral { value = (it as reflect.StringLiteralType).value }
+            )
+          }
+    // All string literals plus String → just string
+    else if (type.members.every((it) -> it is reflect.StringLiteralType || it == reflect.stringType))
+      new Type.Simple { typeName = "string" }
+    // General union → A | B | C
+    else
+      new Type.Union {
+        members = type.members
+          .filter((it) -> !(it is reflect.NothingType))
+          .map((it) -> generateType(it, enclosing, seenMappings))
+      }
+
+/// Generate a TypeScript type from a declared type.
+function generateDeclaredType(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): Type =
+  let (referent = type.referent)
+  let (reflectee = type.referent.reflectee)
+  let (mapped = seenMappings.findOrNull((it) -> it.source == referent))
+    if (mapped != null)
+      mapped.type
+    else if (mappedTypes.containsKey(reflectee))
+      mappedTypes[reflectee]
+    else if (referent is reflect.TypeAlias)
+      generateType(referent.referent, enclosing, seenMappings)
+    else if (reflectee == List || reflectee == Listing)
+      generateListing(type, enclosing, seenMappings)
+    else if (reflectee == Map || reflectee == Mapping)
+      generateMapping(type, enclosing, seenMappings)
+    else if (reflectee == Set)
+      generateSet(type, enclosing, seenMappings)
+    else if (reflectee == Pair)
+      generatePair(type, enclosing, seenMappings)
+    else
+      throw("Cannot generate TypeScript type for \(type.referent.name).")
+
+/// Generate an array type from List/Listing.
+function generateListing(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): Type =
+  let (typeArg = type.typeArguments.getOrNull(0))
+    new Type.Array {
+      elem =
+        if (typeArg == null)
+          new Type.Simple { typeName = "unknown" }
+        else
+          generateType(typeArg, enclosing, seenMappings)
+    }
+
+/// Generate a Record or Map type from Map/Mapping.
+function generateMapping(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): Type =
+  let (typeArgKey = type.typeArguments.getOrNull(0))
+  let (typeArgValue = type.typeArguments.getOrNull(1))
+  let (keyType = if (typeArgKey == null) new Type.Simple { typeName = "string" } else generateType(typeArgKey, enclosing, seenMappings))
+  let (valType = if (typeArgValue == null) new Type.Simple { typeName = "unknown" } else generateType(typeArgValue, enclosing, seenMappings))
+    // Use Record<string, V> when key is string, otherwise Map<K, V>
+    if (keyType is Type.Simple && keyType.typeName == "string")
+      new Type.Record {
+        key = keyType
+        value = valType
+      }
+    else
+      new Type.MapType {
+        key = keyType
+        value = valType
+      }
+
+/// Generate a Set type.
+function generateSet(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): Type =
+  let (typeArg = type.typeArguments.getOrNull(0))
+    new Type.SetType {
+      elem =
+        if (typeArg == null)
+          new Type.Simple { typeName = "unknown" }
+        else
+          generateType(typeArg, enclosing, seenMappings)
+    }
+
+/// Generate a tuple type from Pair.
+function generatePair(
+  type: reflect.DeclaredType,
+  enclosing: reflect.TypeDeclaration,
+  seenMappings: List<TsMapping>
+): Type = new Type.Tuple {
+  elements = type.typeArguments.map((t) -> generateType(t, enclosing, seenMappings))
+}
+
+/// Mapping of Pkl built-in types to TypeScript types.
+mappedTypes: Mapping<Class | TypeAlias, Type> = new {
+  [Int] = new Type.Simple { typeName = "number" }
+  [Int8] = new Type.Simple { typeName = "number" }
+  [Int16] = new Type.Simple { typeName = "number" }
+  [Int32] = new Type.Simple { typeName = "number" }
+  [UInt] = new Type.Simple { typeName = "number" }
+  [UInt8] = new Type.Simple { typeName = "number" }
+  [UInt16] = new Type.Simple { typeName = "number" }
+  [UInt32] = new Type.Simple { typeName = "number" }
+  [Number] = new Type.Simple { typeName = "number" }
+  [Float] = new Type.Simple { typeName = "number" }
+  [String] = new Type.Simple { typeName = "string" }
+  [Boolean] = new Type.Simple { typeName = "boolean" }
+  [Null] = new Type.Simple { typeName = "null" }
+  [Any] = new Type.Simple { typeName = "unknown" }
+  [Duration] = new Type.ObjectLiteral {
+    fields {
+      ["value"] = new Type.Simple { typeName = "number" }
+      ["unit"] = new Type.Simple { typeName = "string" }
+    }
+  }
+  [DurationUnit] = new Type.Simple { typeName = "string" }
+  [DataSize] = new Type.ObjectLiteral {
+    fields {
+      ["value"] = new Type.Simple { typeName = "number" }
+      ["unit"] = new Type.Simple { typeName = "string" }
+    }
+  }
+  [DataSizeUnit] = new Type.Simple { typeName = "string" }
+  [Dynamic] = new Type.Record {
+    key = new Type.Simple { typeName = "string" }
+    value = new Type.Simple { typeName = "unknown" }
+  }
+  [Regex] = new Type.Simple { typeName = "RegExp" }
+  [Uri] = new Type.Simple { typeName = "string" }
+  [Class] = new Type.Simple { typeName = "string" }
+  [TypeAlias] = new Type.Simple { typeName = "string" }
+}

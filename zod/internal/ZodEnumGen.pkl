@@ -1,0 +1,24 @@
+/// Generates Zod enum schemas from Pkl string literal union type aliases.
+@Unlisted
+module pkl.typescript.zod.internal.ZodEnumGen
+
+import "pkl:reflect"
+
+import "../../internal/TsMapping.pkl"
+import "../../internal/utils.pkl"
+
+/// The mapping for this enum.
+mapping: TsMapping.Enum
+
+/// The generated Zod schema contents.
+contents: String =
+  let (schemaName = "\(mapping.name)Schema")
+  let (values = mapping.members.map((m) -> utils.toTsString(m.pklName)))
+    new Listing {
+      when (mapping.alias.docComment != null) {
+        utils.renderDocComment(mapping.alias.docComment!!, "")
+      }
+      "export const \(schemaName) = z.enum([\(values.join(", "))]);"
+      "export type \(mapping.name) = z.infer<typeof \(schemaName)>;"
+      ""
+    }.join("\n")

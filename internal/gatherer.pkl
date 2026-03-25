@@ -1,0 +1,122 @@
+/// Gathers all type declarations referenced by a module for code generation.
+@Unlisted
+module pkl.typescript.internal.gatherer
+
+import "pkl:reflect"
+
+import "typegen.pkl"
+
+/// Result of gathering type declarations.
+///
+/// [ordered] contains declarations in dependency-first order (dependencies appear before dependents).
+/// [visited] is the set of all visited declarations (used for cycle detection).
+class GatherResult {
+  ordered: List<reflect.TypeDeclaration>
+  visited: List<reflect.TypeDeclaration>
+}
+
+/// Given a [reflect.TypeDeclaration], collect all referenced classes or typealiases.
+///
+/// Returns declarations in dependency-first order: if type A references type B,
+/// B will appear before A in the result.
+///
+/// This omits core built-in types.
+function gatherTypeDeclarations(
+  decl: reflect.TypeDeclaration,
+  seen: List<reflect.TypeDeclaration>
+): List<reflect.TypeDeclaration> =
+  gatherTypeDeclarationsOrdered(decl, new GatherResult { ordered = List(); visited = seen }).ordered
+
+function gatherTypeDeclarationsOrdered(
+  decl: reflect.TypeDeclaration,
+  result: GatherResult
+): GatherResult =
+  if (result.visited.contains(decl))
+    result
+  else if (typegen.mappedTypes.containsKey(decl.reflectee))
+    result
+  else if (decl is reflect.Class)
+    if (isAnnotationClass(decl) || isBuiltinClass(decl))
+      result
+    else
+      // Mark as visited first (cycle detection), then gather deps, then add to ordered list
+      let (visiting = new GatherResult { ordered = result.ordered; visited = result.visited.add(decl) })
+      let (afterProps = gatherPropertiesDeclarationsOrdered(decl, visiting))
+      let (afterSuper = gatherSuperDeclarationsOrdered(decl, afterProps))
+      let (afterClasses = gatherModuleClassesOrdered(decl, afterSuper))
+      let (afterAliases = gatherModuleTypeAliasesOrdered(decl, afterClasses))
+      let (afterModule = gatherModuleOrdered(decl, afterAliases))
+        new GatherResult { ordered = afterModule.ordered.add(decl); visited = afterModule.visited }
+  else if (decl is reflect.TypeAlias)
+    let (visiting = new GatherResult { ordered = result.ordered; visited = result.visited.add(decl) })
+    let (afterArgs = gatherTypeArgumentsOrdered(decl, visiting))
+      new GatherResult { ordered = afterArgs.ordered.add(decl); visited = afterArgs.visited }
+  else
+    result
+
+/// Tells if this class is part of the stdlib.
+function isBuiltinClass(clazz: reflect.Class): Boolean =
+  clazz.enclosingDeclaration.uri.startsWith("pkl:")
+
+function gatherTypeDeclarationsFromTypeOrdered(
+  type: reflect.Type,
+  enclosingDeclaration: reflect.TypeDeclaration,
+  result: GatherResult
+): GatherResult =
+  if (type is reflect.DeclaredType)
+    let (referent = type.referent)
+      if (referent is reflect.Class && isBuiltinClass(referent))
+        type.typeArguments.fold(result, (acc, it) -> gatherTypeDeclarationsFromTypeOrdered(it, referent, acc))
+      else
+        gatherTypeDeclarationsOrdered(referent, result)
+  else if (type is reflect.NullableType)
+    gatherTypeDeclarationsFromTypeOrdered(type.member, enclosingDeclaration, result)
+  else if (type is reflect.UnionType)
+    type.members.fold(result, (acc, t) -> gatherTypeDeclarationsFromTypeOrdered(t, enclosingDeclaration, acc))
+  else
+    result
+
+function gatherPropertiesDeclarationsOrdered(clazz: reflect.Class, result: GatherResult): GatherResult =
+  clazz.properties.values
+    .filter((p) -> !p.modifiers.contains("hidden"))
+    .fold(result, (acc, p) -> gatherTypeDeclarationsFromTypeOrdered(p.type, clazz, acc))
+
+function gatherSuperDeclarationsOrdered(clazz: reflect.Class, result: GatherResult): GatherResult =
+  let (superclass = clazz.superclass)
+    if (superclass == null)
+      result
+    else
+      gatherTypeDeclarationsOrdered(superclass, result)
+
+function gatherModuleClassesOrdered(clazz: reflect.Class, result: GatherResult): GatherResult =
+  if (clazz.superclass != reflect.Class(Module))
+    result
+  else
+    clazz.enclosingDeclaration.classes.fold(result, (acc, _, c) ->
+      gatherTypeDeclarationsOrdered(c, acc)
+    )
+
+function gatherModuleTypeAliasesOrdered(clazz: reflect.Class, result: GatherResult): GatherResult =
+  if (clazz.superclass != reflect.Class(Module))
+    result
+  else
+    clazz.enclosingDeclaration.typeAliases.fold(result, (acc, _, alias) ->
+      gatherTypeDeclarationsOrdered(alias, acc)
+    )
+
+function gatherModuleOrdered(decl: reflect.TypeDeclaration, result: GatherResult): GatherResult =
+  gatherTypeDeclarationsOrdered(decl.enclosingDeclaration.moduleClass, result)
+
+function gatherTypeArgumentsOrdered(clazz: reflect.TypeDeclaration, result: GatherResult): GatherResult =
+  reflect
+    .DeclaredType(clazz)
+    .typeArguments
+    .fold(result, (acc, it) -> gatherTypeDeclarationsFromTypeOrdered(it, clazz, acc))
+
+function isAnnotationClass(clazz: reflect.Class): Boolean =
+  if (clazz.reflectee == Annotation)
+    true
+  else if (clazz.superclass != null)
+    isAnnotationClass(clazz.superclass!!)
+  else
+    false
