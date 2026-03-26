@@ -8,11 +8,11 @@ abstract class Base {
 }
 
 class A extends Base {
-  type = "typeA"
+  type: "typeA"
   valueA: String
 }
 
 class B extends Base {
-  type = "typeB"
+  type: "typeB"
   valueB: Int
 }

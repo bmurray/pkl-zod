@@ -27,6 +27,16 @@ local superHasUnion: Boolean =
   else
     clazz.superclass.annotations.any((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
 
+/// Get the discriminator field name from the parent's @ts.Union annotation.
+local superDiscriminator: String? =
+  if (!superHasUnion)
+    null
+  else
+    // noinspection UnresolvedElement
+    clazz.superclass.annotations
+      .findOrNull((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
+      ?.discriminator
+
 /// The generated Zod schema contents.
 contents: String =
   if (unionAnnotation != null)
@@ -113,6 +123,10 @@ function getOwnFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<Stri
       })
 
 /// Get all fields (own + inherited) for a class, used when parent is a @ts.Union.
+///
+/// When the discriminator field has a value-only override (`= "value"` instead of `: "value"`),
+/// Pkl reflection reports `UnknownType`. Since `z.discriminatedUnion` requires `z.literal()` for
+/// the discriminator, the child class MUST use a type annotation to narrow the discriminator type.
 function getAllFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<String, ZodField> =
   let (
     superFields: Map<String, ZodField> =
@@ -123,9 +137,29 @@ function getAllFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<Stri
   )
     superFields + clazz.properties
       .filter((_, prop: reflect.Property) ->
-        !prop.modifiers.contains("hidden")
-          // Skip value-only overrides (UnknownType) so the inherited type is preserved
-          && !(prop.type is reflect.UnknownType)
+        if (prop.modifiers.contains("hidden"))
+          false
+        else if (prop.type is reflect.UnknownType && prop.name == superDiscriminator)
+          // Value-only override on discriminator: `type = "typeA"` instead of `type: "typeA"`
+          // Pkl reflection doesn't expose the default value, so we can't generate z.literal().
+          throw(
+            """
+            Discriminated union member `\(clazz.reflectee)` uses a value assignment for the discriminator field `\(prop.name)`.
+
+            Change `\(prop.name) = "..."` to `\(prop.name): "..."` (type annotation) so the code generator can produce a z.literal() type.
+
+            Example:
+              class \(clazz.reflectee) extends \(clazz.superclass!!.reflectee) {
+                \(prop.name): "expectedValue"
+                ...
+              }
+            """
+          )
+        else if (prop.type is reflect.UnknownType)
+          // Non-discriminator value-only override — skip so inherited type is preserved
+          false
+        else
+          true
       )
       .mapValues((_, prop: reflect.Property) -> new ZodField {
         name = utils.toTsPropertyName(prop)

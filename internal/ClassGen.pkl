@@ -26,6 +26,16 @@ local superHasUnion: Boolean =
   else
     clazz.superclass.annotations.any((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
 
+/// Get the discriminator field name from the parent's @ts.Union annotation.
+local superDiscriminator: String? =
+  if (!superHasUnion)
+    null
+  else
+    // noinspection UnresolvedElement
+    clazz.superclass.annotations
+      .findOrNull((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
+      ?.discriminator
+
 contents =
   if (unionAnnotation != null)
     renderUnionType()
@@ -91,6 +101,20 @@ function getFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<String,
             false
           else if (superProp == null || isSameType(superProp.type, prop.type))
             true
+          else if (prop.type is reflect.UnknownType && superHasUnion && propName == superDiscriminator)
+            throw(
+              """
+              Discriminated union member `\(clazz.reflectee)` uses a value assignment for the discriminator field `\(propName)`.
+
+              Change `\(propName) = "..."` to `\(propName): "..."` (type annotation) so the code generator can produce a literal type.
+
+              Example:
+                class \(clazz.reflectee) extends \(clazz.superclass!!.reflectee) {
+                  \(propName): "expectedValue"
+                  ...
+                }
+              """
+            )
           else if (prop.type is reflect.UnknownType)
             false
           else if (superHasUnion)
