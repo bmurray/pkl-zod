@@ -1,0 +1,10 @@
+module AbstractUnion
+import "../../ts.pkl"
+
+class Base {
+  something: String
+}
+
+something: Base = new {
+  something = "else"
+}

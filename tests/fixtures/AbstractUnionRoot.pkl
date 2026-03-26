@@ -1,0 +1,23 @@
+module AbstractUnion
+import "../../ts.pkl"
+typealias Discriminator = "typeA" | "typeB"
+@ts.Union { discriminator = "type" }
+abstract class Base {
+  type: Discriminator
+  something: String
+}
+
+class A extends Base {
+  type: "typeA"
+  valueA: String
+}
+
+class B extends Base {
+  type: "typeB"
+  valueB: Int
+}
+
+something: Base = new A {
+  valueA = "hello"
+  something = "else"
+}

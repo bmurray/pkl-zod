@@ -217,6 +217,71 @@ test("BaseSchema rejects unknown variant", () => {
 });
 
 // ---------------------------------------------------------------------------
+section("Zod schema validation — abstract union with root property (AbstractUnionRoot.pkl)");
+
+const abstractUnionRoot = await import(path.join(ZOD_OUT, "abstractUnionRoot.schema.ts"));
+
+test("AbstractUnionSchema accepts a valid root object with variant A", () => {
+  const result = abstractUnionRoot.AbstractUnionSchema.parse({
+    something: { type: "typeA", something: "hello", valueA: "world" },
+  });
+  assert(result.something.type === "typeA", "type should be 'typeA'");
+  assert(result.something.valueA === "world", "valueA should be 'world'");
+});
+
+test("AbstractUnionSchema accepts a valid root object with variant B", () => {
+  const result = abstractUnionRoot.AbstractUnionSchema.parse({
+    something: { type: "typeB", something: "hello", valueB: 42 },
+  });
+  assert(result.something.type === "typeB", "type should be 'typeB'");
+  assert(result.something.valueB === 42, "valueB should be 42");
+});
+
+test("AbstractUnionSchema rejects unknown discriminator in root property", () => {
+  let threw = false;
+  try {
+    abstractUnionRoot.AbstractUnionSchema.parse({
+      something: { type: "typeC", something: "hello" },
+    });
+  } catch {
+    threw = true;
+  }
+  assert(threw, "should reject unknown type 'typeC'");
+});
+
+test("BaseSchema ordering: defined before AbstractUnionSchema", () => {
+  assert(abstractUnionRoot.BaseSchema !== undefined, "BaseSchema should be exported");
+  assert(abstractUnionRoot.AbstractUnionSchema !== undefined, "AbstractUnionSchema should be exported");
+});
+
+// ---------------------------------------------------------------------------
+section("Zod schema validation — base class reference (BaseReference.pkl)");
+
+const baseReference = await import(path.join(ZOD_OUT, "baseReference.schema.ts"));
+
+test("AbstractUnionSchema accepts root object referencing Base", () => {
+  const result = baseReference.AbstractUnionSchema.parse({
+    something: { something: "else" },
+  });
+  assert(result.something.something === "else", "nested something should be 'else'");
+});
+
+test("AbstractUnionSchema rejects missing nested field", () => {
+  let threw = false;
+  try {
+    baseReference.AbstractUnionSchema.parse({ something: {} });
+  } catch {
+    threw = true;
+  }
+  assert(threw, "should reject missing 'something' in nested Base");
+});
+
+test("BaseSchema ordering: defined before AbstractUnionSchema", () => {
+  assert(baseReference.BaseSchema !== undefined, "BaseSchema should be exported");
+  assert(baseReference.AbstractUnionSchema !== undefined, "AbstractUnionSchema should be exported");
+});
+
+// ---------------------------------------------------------------------------
 section("Zod schema validation — deep inheritance");
 
 const deepInheritance = await import(path.join(ZOD_OUT, "deepInheritance.schema.ts"));
