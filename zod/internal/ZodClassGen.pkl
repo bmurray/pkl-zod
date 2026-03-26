@@ -16,9 +16,28 @@ mappings: List<TsMapping>
 
 local clazz: reflect.Class = mapping.clazz
 
+/// Check if this class has the @ts.Union annotation.
+local unionAnnotation: Annotation? =
+  clazz.annotations.findOrNull((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
+
+/// Check if the superclass has the @ts.Union annotation.
+local superHasUnion: Boolean =
+  if (clazz.superclass == null)
+    false
+  else
+    clazz.superclass.annotations.any((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
+
 /// The generated Zod schema contents.
 contents: String =
-  let (ownFields = getOwnFields(clazz, mappings))
+  if (unionAnnotation != null)
+    renderDiscriminatedUnion()
+  else
+    renderObjectSchema()
+
+/// Render a standard z.object() schema.
+local function renderObjectSchema(): String =
+  // If superclass has @ts.Union, include all fields (no .extend())
+  let (ownFields = if (superHasUnion) getAllFields(clazz, mappings) else getOwnFields(clazz, mappings))
   let (schemaName = "\(mapping.name)Schema")
   let (
     superMapping: TsMapping.Class? =
@@ -27,7 +46,7 @@ contents: String =
   )
   let (
     baseSchema =
-      if (superMapping != null)
+      if (superMapping != null && !superHasUnion)
         "\(superMapping.name)Schema.extend({\(renderFields(ownFields))})"
       else
         "z.object({\(renderFields(ownFields))})"
@@ -37,6 +56,25 @@ contents: String =
         utils.renderDocComment(clazz.docComment!!, "")
       }
       "export const \(schemaName) = \(baseSchema);"
+      "export type \(mapping.name) = z.infer<typeof \(schemaName)>;"
+      ""
+    }.join("\n")
+
+/// Render a z.discriminatedUnion() schema for a @ts.Union-annotated abstract class.
+local function renderDiscriminatedUnion(): String =
+  let (schemaName = "\(mapping.name)Schema")
+  // noinspection UnresolvedElement
+  let (discriminator: String = unionAnnotation!!.discriminator)
+  let (
+    childSchemas = mappings
+      .filter((m) -> m is TsMapping.Class && (m as TsMapping.Class).clazz.superclass == clazz)
+      .map((m) -> "\(m.name)Schema")
+  )
+    new Listing {
+      when (clazz.docComment != null) {
+        utils.renderDocComment(clazz.docComment!!, "")
+      }
+      "export const \(schemaName) = z.discriminatedUnion(\"\(discriminator)\", [\(childSchemas.join(", "))]);"
       "export type \(mapping.name) = z.infer<typeof \(schemaName)>;"
       ""
     }.join("\n")
@@ -69,6 +107,22 @@ function getOwnFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<Stri
           else
             true
       )
+      .mapValues((_, prop: reflect.Property) -> new ZodField {
+        name = utils.toTsPropertyName(prop)
+        zodType = zodtypegen.generateZodType(prop.type, clazz, mappings)
+      })
+
+/// Get all fields (own + inherited) for a class, used when parent is a @ts.Union.
+function getAllFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<String, ZodField> =
+  let (
+    superFields: Map<String, ZodField> =
+      if (doesNotInherit(clazz))
+        Map()
+      else
+        getAllFields(clazz.superclass!!, mappings)
+  )
+    superFields + clazz.properties
+      .filter((_, prop: reflect.Property) -> !prop.modifiers.contains("hidden"))
       .mapValues((_, prop: reflect.Property) -> new ZodField {
         name = utils.toTsPropertyName(prop)
         zodType = zodtypegen.generateZodType(prop.type, clazz, mappings)

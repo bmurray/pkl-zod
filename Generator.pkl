@@ -152,10 +152,20 @@ local function declarationReferencedByType(type: reflect.Type, decl: reflect.Typ
   else
     false
 
+/// Check if a class has the @ts.Union annotation.
+local function hasUnionAnnotation(clazz: reflect.Class): Boolean =
+  clazz.annotations.any((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
+
+/// Reorder mappings so @ts.Union classes come after their children.
+local function reorderForUnions(localMappings: List<TsMapping>): List<TsMapping> =
+  let (nonUnion = localMappings.filter((it) -> !(it is TsMapping.Class && hasUnionAnnotation((it as TsMapping.Class).clazz))))
+  let (unions = localMappings.filter((it) -> it is TsMapping.Class && hasUnionAnnotation((it as TsMapping.Class).clazz)))
+    nonUnion + unions
+
 /// Generate the file contents for a single module.
 local function generateFileForModule(moduleUri: String): String =
   let (mod = moduleForUri(moduleUri))
-  let (localMappings = mappingsForModule(moduleUri))
+  let (localMappings = reorderForUnions(mappingsForModule(moduleUri)))
   let (imports = importsForModule(moduleUri))
   let (
     generated = localMappings.map((it) ->

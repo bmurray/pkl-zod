@@ -31,3 +31,29 @@ class Name extends Annotation {
 class Type extends Annotation {
   value: String
 }
+
+/// Mark an abstract class as a discriminated union.
+///
+/// Instead of generating an interface for the abstract class, this generates
+/// a union type of all concrete subclasses, discriminated by the given field.
+///
+/// Example:
+///
+/// ```
+/// @ts.Union { discriminator = "type" }
+/// abstract class Base {
+///   type: String
+/// }
+///
+/// class A extends Base {
+///   type: "A"
+///   valueA: String
+/// }
+/// ```
+///
+/// Generates:
+/// - TypeScript: `export type Base = A | B;`
+/// - Zod: `z.discriminatedUnion("type", [ASchema, BSchema])`
+class Union extends Annotation {
+  discriminator: String
+}

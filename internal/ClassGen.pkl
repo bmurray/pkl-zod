@@ -15,14 +15,28 @@ clazz: reflect.Class = mapping.source as reflect.Class
 
 classInfo: TsMapping.Class = mapping as TsMapping.Class
 
+/// Check if a class has the @ts.Union annotation.
+local unionAnnotation: Annotation? =
+  clazz.annotations.findOrNull((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
+
+/// Check if the superclass has the @ts.Union annotation (i.e., this class is a union member).
+local superHasUnion: Boolean =
+  if (clazz.superclass == null)
+    false
+  else
+    clazz.superclass.annotations.any((it) -> it.getClass().toString() == "pkl.typescript.ts#Union")
+
 contents =
-  new Listing {
-    when (clazz.docComment != null) {
-      utils.renderDocComment(clazz.docComment!!, "")
-    }
-    renderInterface()
-    ""
-  }.join("\n")
+  if (unionAnnotation != null)
+    renderUnionType()
+  else
+    new Listing {
+      when (clazz.docComment != null) {
+        utils.renderDocComment(clazz.docComment!!, "")
+      }
+      renderInterface()
+      ""
+    }.join("\n")
 
 local superClass: TsMapping.Class? =
   mappings.findOrNull((c) -> c is TsMapping.Class && (c as TsMapping.Class).clazz == clazz.superclass)
@@ -69,7 +83,8 @@ function getFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<String,
         getFields(clazz.superclass!!, mappings)
   )
   let (superProperties = getAllProperties(clazz.superclass))
-    clazz.properties
+  let (
+    ownFields = clazz.properties
       .filter((propName, prop: reflect.Property) ->
         let (superProp = superProperties.findOrNull((it) -> it.name == prop.name))
           if (prop.modifiers.contains("hidden"))
@@ -78,6 +93,9 @@ function getFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<String,
             true
           else if (prop.type is reflect.UnknownType)
             false
+          else if (superHasUnion)
+            // Allow type narrowing in discriminated union members
+            true
           else
             throw(
               """
@@ -93,24 +111,45 @@ function getFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<String,
         docComment = prop.docComment
         name = utils.toTsPropertyName(prop)
         property = prop
-      }) + superFields.mapValues((_, field) -> (field) { isInherited = true })
+      })
+  )
+    // Own fields on the right so they take precedence over inherited fields with the same key
+    superFields.mapValues((_, field) -> (field) { isInherited = true }) + ownFields
 
 /// Render the export interface declaration.
 local function renderInterface(): String =
+  // If the superclass has @ts.Union, render all fields with own fields taking precedence (no extends clause)
   let (ownFields = fields.filter((_, f) -> !f.isInherited))
+  let (inheritedFields = fields.filter((_, f) -> f.isInherited))
+  let (allFields = if (superHasUnion) inheritedFields + ownFields else ownFields)
   let (
     extendsClause =
-      if (superClass != null)
+      if (superClass != null && !superHasUnion)
         " extends \(superClass.name)"
       else
         ""
   )
     new Listing {
       "export interface \(classInfo.name)\(extendsClause) {"
-      for (_, field in ownFields) {
+      for (_, field in allFields) {
         renderField(field)
       }
       "}"
+    }.join("\n")
+
+/// Render a discriminated union type for a @ts.Union-annotated abstract class.
+local function renderUnionType(): String =
+  let (
+    childMappings = mappings
+      .filter((m) -> m is TsMapping.Class && (m as TsMapping.Class).clazz.superclass == clazz)
+      .map((m) -> m.name)
+  )
+    new Listing {
+      when (clazz.docComment != null) {
+        utils.renderDocComment(clazz.docComment!!, "")
+      }
+      "export type \(classInfo.name) = \(childMappings.join(" | "));"
+      ""
     }.join("\n")
 
 /// Render a single interface field.
