@@ -1,0 +1,15 @@
+/// Tests Map types with non-string keys.
+module NonStringKeys
+
+/// Uses integer keys which should produce Map<number, T> instead of Record.
+class IntKeyedMap {
+  scores: Map<Int, String>
+  positions: Map<Int, Float>
+}
+
+/// Mixed: some string keys, some not.
+class MixedMaps {
+  stringKeyed: Map<String, Int>
+  intKeyed: Map<Int, String>
+  intToList: Map<Int, List<String>>
+}

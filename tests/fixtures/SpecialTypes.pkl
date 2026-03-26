@@ -1,0 +1,39 @@
+/// Tests special built-in Pkl types: DataSize, Duration, Pair, Set, Regex, Uri, Dynamic, Any.
+module SpecialTypes
+
+class DurationFields {
+  timeout: Duration
+  interval: Duration
+  maxRetry: Duration?
+}
+
+class DataSizeFields {
+  maxUpload: DataSize
+  diskQuota: DataSize
+  bufferSize: DataSize?
+}
+
+class PairFields {
+  coordinate: Pair<Float, Float>
+  entry: Pair<String, Int>
+  optionalPair: Pair<String, Boolean>?
+}
+
+class SetFields {
+  uniqueTags: Set<String>
+  allowedPorts: Set<Int>
+  optionalSet: Set<String>?
+}
+
+class RegexAndUri {
+  pattern: Regex
+  endpoint: Uri
+  altPattern: Regex?
+  altEndpoint: Uri?
+}
+
+class LooseTypes {
+  anything: Any
+  flexible: Dynamic
+  optionalAny: Any?
+}

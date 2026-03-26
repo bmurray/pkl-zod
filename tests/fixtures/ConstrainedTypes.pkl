@@ -1,0 +1,37 @@
+/// Tests type aliases with various constraints.
+module ConstrainedTypes
+
+/// A port number.
+typealias Port = UInt16(isBetween(1, 65535))
+
+/// A percentage value.
+typealias Percentage = Float(isBetween(0.0, 100.0))
+
+/// A non-empty string.
+typealias NonEmptyString = String(!isEmpty)
+
+/// An email-like string.
+typealias Email = String(matches(Regex(#"^[^@]+@[^@]+\.[^@]+$"#)))
+
+/// A hex color code.
+typealias HexColor = String(matches(Regex(#"^#[0-9a-fA-F]{6}$"#)))
+
+/// A UUID string.
+typealias UUID = String(matches(Regex(#"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"#)))
+
+/// A positive integer.
+typealias PositiveInt = Int(this > 0)
+
+/// An IP address-like string.
+typealias IPv4 = String(matches(Regex(#"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#)))
+
+class ServerConfig {
+  host: IPv4
+  port: Port
+  id: UUID
+  healthPercent: Percentage
+  name: NonEmptyString
+  theme: HexColor
+  maxConnections: PositiveInt
+  adminEmail: Email
+}

@@ -1,0 +1,30 @@
+/// Tests properties that collide with TypeScript keywords.
+/// In Pkl, reserved words must be backtick-escaped.
+module KeywordCollisions
+
+class Config {
+  `default`: String
+  `delete`: Boolean
+  `function`: Int
+  `import`: String
+  `export`: Boolean
+  `class`: String
+  `extends`: Int
+  `implements`: String
+  `interface`: Boolean
+  `package`: String
+  `private`: Int
+  `protected`: String
+  `public`: Boolean
+  `static`: String
+  `yield`: Int
+  `enum`: String
+  `const`: Boolean
+  `let`: String
+  `var`: Int
+  `type`: String
+  `readonly`: Boolean
+  `abstract`: String
+  `declare`: Int
+  `module`: String
+}

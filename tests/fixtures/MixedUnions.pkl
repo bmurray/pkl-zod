@@ -1,0 +1,29 @@
+/// Tests various union type combinations.
+module MixedUnions
+
+/// Pure string literal union — should generate enum-like type.
+typealias Status = "pending"|"active"|"inactive"|"archived"
+
+/// Another string literal union.
+typealias Priority = "low"|"medium"|"high"|"critical"
+
+/// Single member string literal.
+typealias Singleton = "only"
+
+class TaskConfig {
+  status: Status
+  priority: Priority
+  label: Singleton
+}
+
+/// Using union types inline.
+class InlineUnions {
+  direction: "north"|"south"|"east"|"west"
+  flag: Boolean
+}
+
+/// Nullable enum-like union.
+class OptionalUnions {
+  status: Status?
+  priority: Priority?
+}

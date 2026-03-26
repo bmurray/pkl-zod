@@ -1,0 +1,38 @@
+/// Tests edge cases: empty classes, single-field classes, many-field classes.
+module EmptyAndMinimal
+
+/// A class with zero properties.
+class Empty {
+}
+
+/// A class with a single property.
+class SingleField {
+  value: String
+}
+
+/// A class with many scalar fields.
+class KitchenSink {
+  aString: String
+  anInt: Int
+  aFloat: Float
+  aBool: Boolean
+  anInt8: Int8
+  anInt16: Int16
+  anInt32: Int32
+  aUint: UInt
+  aUint8: UInt8
+  aUint16: UInt16
+  aUint32: UInt32
+}
+
+/// Inheriting from an empty class.
+open class EmptyBase {
+}
+
+class WithParent extends EmptyBase {
+  name: String
+}
+
+/// Inheriting but adding nothing.
+class StillEmpty extends EmptyBase {
+}

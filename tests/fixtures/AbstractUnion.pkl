@@ -4,6 +4,7 @@ import "../../ts.pkl"
 @ts.Union { discriminator = "type" }
 abstract class Base {
   type: String
+  something: String
 }
 
 class A extends Base {

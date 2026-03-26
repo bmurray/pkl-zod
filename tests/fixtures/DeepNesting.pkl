@@ -1,0 +1,24 @@
+/// Tests deeply nested generic types.
+module DeepNesting
+
+/// A matrix represented as a list of lists of numbers.
+class Matrix {
+  rows: List<List<Float>>
+  labels: Map<String, List<String>>
+  tagIndex: Map<String, Map<String, Int>>
+}
+
+/// Nested nullable collections.
+class NullableCollections {
+  maybeList: List<Int>?
+  maybeMap: Map<String, Boolean>?
+  listOfNullable: List<String?>
+  deepOptional: Map<String, List<Int?>>?
+}
+
+/// Triple nesting.
+class CacheConfig {
+  /// region -> service -> key -> value
+  regionCache: Map<String, Map<String, Map<String, String>>>
+  priorityQueues: List<List<List<Int>>>
+}

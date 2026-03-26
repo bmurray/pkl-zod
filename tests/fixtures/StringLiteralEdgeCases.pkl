@@ -1,0 +1,27 @@
+/// Tests edge cases in string literal types and enum generation.
+module StringLiteralEdgeCases
+
+/// Normal enum-like union.
+typealias HttpMethod = "GET"|"POST"|"PUT"|"DELETE"|"PATCH"|"HEAD"|"OPTIONS"
+
+/// Single value.
+typealias Always = "always"
+
+/// Two values.
+typealias YesNo = "yes"|"no"
+
+/// Values that need normalization for enum names.
+typealias ContentType = "application/json"|"text/html"|"text/plain"|"multipart/form-data"
+
+/// Mixed case values.
+typealias MixedCase = "camelCase"|"PascalCase"|"snake_case"|"SCREAMING_SNAKE"
+
+/// Numeric-looking string values.
+typealias Version = "v1"|"v2"|"v3"
+
+class Endpoint {
+  method: HttpMethod
+  contentType: ContentType
+  format: MixedCase
+  apiVersion: Version
+}

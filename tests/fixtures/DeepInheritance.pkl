@@ -1,0 +1,41 @@
+/// Tests multi-level inheritance chains.
+module DeepInheritance
+
+open class Base {
+  id: String
+  createdAt: String
+}
+
+open class Timestamped extends Base {
+  updatedAt: String
+}
+
+open class Auditable extends Timestamped {
+  createdBy: String
+  updatedBy: String
+}
+
+class Document extends Auditable {
+  title: String
+  content: String
+  version: Int
+}
+
+class AuditLog extends Auditable {
+  action: String
+  details: Map<String, String>
+}
+
+/// A separate chain.
+open class Named {
+  name: String
+}
+
+class Tag extends Named {
+  color: String?
+}
+
+class Category extends Named {
+  description: String
+  parent: String?
+}

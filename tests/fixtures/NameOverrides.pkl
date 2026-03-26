@@ -1,0 +1,36 @@
+/// Tests @ts.Name and @ts.Type annotation overrides.
+module NameOverrides
+
+import "../../ts.pkl"
+
+@ts.Name { value = "UserProfile" }
+class User_Profile {
+  id: Int
+  @ts.Name { value = "displayName" }
+  user_name: String
+  @ts.Name { value = "emailAddress" }
+  email_addr: String
+}
+
+@ts.Name { value = "ServerConfig" }
+class server_config {
+  @ts.Name { value = "hostName" }
+  host_name: String
+  port: Int
+}
+
+class Timestamps {
+  @ts.Type { value = "Date" }
+  createdAt: String
+  @ts.Type { value = "Date" }
+  updatedAt: String
+  @ts.Type { value = "Date | null" }
+  deletedAt: String?
+}
+
+@ts.Name { value = "APIResponse" }
+class api_response {
+  @ts.Name { value = "statusCode" }
+  status_code: Int
+  body: String
+}

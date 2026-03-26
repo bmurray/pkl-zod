@@ -1,0 +1,58 @@
+/// Tests multiple discriminated unions in a single module.
+module MultipleUnions
+
+import "../../ts.pkl"
+
+/// A shape discriminated by kind.
+@ts.Union { discriminator = "kind" }
+abstract class Shape {
+  kind: String
+}
+
+class Circle extends Shape {
+  kind: "circle"
+  radius: Float
+}
+
+class Rectangle extends Shape {
+  kind: "rectangle"
+  width: Float
+  height: Float
+}
+
+class Triangle extends Shape {
+  kind: "triangle"
+  base: Float
+  height: Float
+}
+
+/// An event discriminated by eventType.
+@ts.Union { discriminator = "eventType" }
+abstract class Event {
+  eventType: String
+  timestamp: String
+}
+
+class ClickEvent extends Event {
+  eventType: "click"
+  x: Int
+  y: Int
+}
+
+class KeyEvent extends Event {
+  eventType: "key"
+  keyCode: Int
+  modifiers: List<String>
+}
+
+class ScrollEvent extends Event {
+  eventType: "scroll"
+  deltaX: Float
+  deltaY: Float
+}
+
+/// A regular class too, to ensure they coexist.
+class Metadata {
+  version: Int
+  source: String
+}

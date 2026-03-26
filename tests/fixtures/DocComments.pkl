@@ -1,0 +1,29 @@
+/// Module-level doc comment: Tests that doc comments propagate to generated code.
+module DocComments
+
+/// A user in the system.
+///
+/// Users are the primary entity and can have multiple roles.
+class User {
+  /// The unique identifier for the user.
+  id: Int
+  /// The user's full display name.
+  name: String
+  /// The user's email address. Must be valid.
+  email: String
+  /// Whether the user account is currently active.
+  active: Boolean
+}
+
+/// Represents a geographic location.
+class Location {
+  /// Latitude in decimal degrees (-90 to 90).
+  lat: Float
+  /// Longitude in decimal degrees (-180 to 180).
+  lng: Float
+  /// Optional human-readable label for the location.
+  label: String?
+}
+
+/// Available log levels for the application.
+typealias LogLevel = "trace"|"debug"|"info"|"warn"|"error"|"fatal"

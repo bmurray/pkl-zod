@@ -1,0 +1,52 @@
+/// Tests all collection type variants and combinations.
+module CollectionVariants
+
+class ListVariants {
+  strings: List<String>
+  ints: List<Int>
+  bools: List<Boolean>
+  floats: List<Float>
+  nested: List<List<String>>
+  empty: List<String>
+}
+
+class ListingVariants {
+  items: Listing<String>
+  numbers: Listing<Int>
+  nested: Listing<Listing<String>>
+}
+
+class MapVariants {
+  stringToString: Map<String, String>
+  stringToInt: Map<String, Int>
+  stringToList: Map<String, List<String>>
+  intToString: Map<Int, String>
+}
+
+class MappingVariants {
+  config: Mapping<String, String>
+  counts: Mapping<String, Int>
+  nested: Mapping<String, Mapping<String, Boolean>>
+}
+
+class SetVariants {
+  tags: Set<String>
+  ids: Set<Int>
+  flags: Set<Boolean>
+}
+
+class PairVariants {
+  stringPair: Pair<String, String>
+  intPair: Pair<Int, Int>
+  mixedPair: Pair<String, Int>
+  nestedPair: Pair<String, List<Int>>
+}
+
+/// Collections of collections.
+class CollectionCombos {
+  listOfMaps: List<Map<String, Int>>
+  mapOfLists: Map<String, List<String>>
+  setOfPairs: Set<Pair<String, Int>>
+  listOfSets: List<Set<String>>
+  mapOfSets: Map<String, Set<Int>>
+}

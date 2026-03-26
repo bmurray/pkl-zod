@@ -1,0 +1,33 @@
+/// Tests nullable types in every position.
+module NullableEverything
+
+class AllOptional {
+  name: String?
+  age: Int?
+  active: Boolean?
+  score: Float?
+  tags: List<String>?
+  metadata: Map<String, String>?
+}
+
+/// Mix of required and optional fields.
+class PartiallyOptional {
+  id: Int
+  name: String?
+  email: String
+  phone: String?
+  addresses: List<String>
+  notes: List<String>?
+}
+
+/// Nullable inside collections.
+class NullableElements {
+  names: List<String?>
+  scores: Map<String, Int?>
+  mixedList: List<Boolean?>
+}
+
+/// Deeply optional.
+class DeepNullable {
+  data: Map<String, List<String?>>?
+}

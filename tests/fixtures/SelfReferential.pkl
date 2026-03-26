@@ -1,0 +1,28 @@
+/// Tests types that reference each other (non-circular at the schema level).
+module SelfReferential
+
+class Address {
+  street: String
+  city: String
+  zip: String
+}
+
+class Company {
+  name: String
+  headquarters: Address
+  branches: List<Address>
+}
+
+class Employee {
+  name: String
+  company: Company
+  homeAddress: Address
+  title: String
+}
+
+/// A type that references multiple other types.
+class OrgChart {
+  company: Company
+  employees: List<Employee>
+  mainOffice: Address
+}
