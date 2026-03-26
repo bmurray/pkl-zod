@@ -7,7 +7,7 @@ PKL code generators for TypeScript and Zod, built entirely in PKL. Generate type
 Use the package directly via its `package://` URI — no installation needed:
 
 ```bash
-pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.1.3#/gen.pkl" \
+pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.2#/gen.pkl" \
   -- MyConfig.pkl --output-path ./generated
 ```
 
@@ -16,14 +16,14 @@ pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typesc
 ### Generate TypeScript Interfaces
 
 ```bash
-pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.1.3#/gen.pkl" \
+pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.2#/gen.pkl" \
   -- path/to/MyModule.pkl --output-path ./generated
 ```
 
 ### Generate Zod Schemas
 
 ```bash
-pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.1.3#/zod/gen.pkl" \
+pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.2#/zod/gen.pkl" \
   -- path/to/MyModule.pkl --output-path ./generated
 ```
 
@@ -132,13 +132,14 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 | `Dynamic` | `Record<string, unknown>` | `z.record(z.string(), z.unknown())` |
 | Class | `interface` | `z.object({ ... })` |
 | Class extends Parent | `interface extends Parent` | `ParentSchema.extend({ ... })` |
+| `@ts.Union` abstract class | `type = A \| B` | `z.discriminatedUnion(key, [...])` |
 
 ## Annotations
 
 Override generated names or types with `@ts.Name` and `@ts.Type`:
 
 ```pkl
-import "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.1.3#/ts.pkl"
+import "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.2#/ts.pkl"
 
 @ts.Name { value = "UserProfile" }
 class User_Profile {
@@ -150,6 +151,85 @@ class User_Profile {
 }
 ```
 
+### Discriminated Unions with `@ts.Union`
+
+Mark an abstract class with `@ts.Union` to generate a discriminated union type instead of an interface. Each child class must narrow the discriminator field using a **type annotation** (`: "value"`), not a value assignment (`= "value"`).
+
+```pkl
+import "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.2#/ts.pkl"
+
+@ts.Union { discriminator = "kind" }
+abstract class Shape {
+  kind: String
+}
+
+class Circle extends Shape {
+  kind: "circle"
+  radius: Float
+}
+
+class Rectangle extends Shape {
+  kind: "rectangle"
+  width: Float
+  height: Float
+}
+```
+
+**TypeScript output:**
+
+```typescript
+export interface Circle {
+  kind: "circle";
+  radius: number;
+}
+
+export interface Rectangle {
+  kind: "rectangle";
+  width: number;
+  height: number;
+}
+
+export type Shape = Circle | Rectangle;
+```
+
+**Zod output:**
+
+```typescript
+export const CircleSchema = z.object({
+  kind: z.literal("circle"),
+  radius: z.number(),
+});
+export type Circle = z.infer<typeof CircleSchema>;
+
+export const RectangleSchema = z.object({
+  kind: z.literal("rectangle"),
+  width: z.number(),
+  height: z.number(),
+});
+export type Rectangle = z.infer<typeof RectangleSchema>;
+
+export const ShapeSchema = z.discriminatedUnion("kind", [CircleSchema, RectangleSchema]);
+export type Shape = z.infer<typeof ShapeSchema>;
+```
+
+The discriminator field can also use a typealias:
+
+```pkl
+typealias ShapeKind = "circle" | "rectangle"
+
+@ts.Union { discriminator = "kind" }
+abstract class Shape {
+  kind: ShapeKind
+}
+
+class Circle extends Shape {
+  kind: "circle"
+  radius: Float
+}
+```
+
+> **Note:** Child classes must use type annotations (`kind: "circle"`) to narrow the discriminator. Value assignments (`kind = "circle"`) will produce a clear error, because Pkl's reflection doesn't expose default values.
+
 ## Using as a Project Dependency
 
 Add to your `PklProject`:
@@ -159,7 +239,7 @@ amends "pkl:Project"
 
 dependencies {
   ["pkl.typescript"] {
-    uri = "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.1.3"
+    uri = "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.2"
   }
 }
 ```
