@@ -18,18 +18,33 @@ class Name extends Annotation {
   value: TsName
 }
 
+/// Zod-native date string formats.
+///
+/// - `"date"` → `z.iso.date()` (YYYY-MM-DD)
+/// - `"datetime"` → `z.iso.datetime()` (ISO 8601)
+/// - `"time"` → `z.iso.time()` (HH:MM:SS)
+typealias DateFormat = "date" | "datetime" | "time"
+
 /// Override the generated TypeScript type for the annotated property.
 ///
 /// The value is rendered verbatim in the generated output.
+///
+/// When `value = "Date"`, the Zod generator produces `z.coerce.date()` instead
+/// of inferring from the Pkl type. Use the optional `format` field to generate
+/// a Zod string format validator instead (e.g. `z.string().datetime()`).
 ///
 /// Example:
 ///
 /// ```
 /// @ts.Type { value = "Date" }
 /// createdAt: String
+///
+/// @ts.Type { value = "Date"; format = "datetime" }
+/// updatedAt: String
 /// ```
 class Type extends Annotation {
   value: String
+  format: DateFormat?
 }
 
 /// Mark an abstract class as a discriminated union.

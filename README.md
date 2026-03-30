@@ -7,7 +7,7 @@ PKL code generators for TypeScript and Zod, built entirely in PKL. Generate type
 Use the package directly via its `package://` URI — no installation needed:
 
 ```bash
-pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.4#/gen.pkl" \
+pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.5#/gen.pkl" \
   -- MyConfig.pkl --output-path ./generated
 ```
 
@@ -16,14 +16,14 @@ pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typesc
 ### Generate TypeScript Interfaces
 
 ```bash
-pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.4#/gen.pkl" \
+pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.5#/gen.pkl" \
   -- path/to/MyModule.pkl --output-path ./generated
 ```
 
 ### Generate Zod Schemas
 
 ```bash
-pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.4#/zod/gen.pkl" \
+pkl run "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.5#/zod/gen.pkl" \
   -- path/to/MyModule.pkl --output-path ./generated
 ```
 
@@ -139,7 +139,7 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 Override generated names or types with `@ts.Name` and `@ts.Type`:
 
 ```pkl
-import "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.4#/ts.pkl"
+import "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.5#/ts.pkl"
 
 @ts.Name { value = "UserProfile" }
 class User_Profile {
@@ -151,12 +151,46 @@ class User_Profile {
 }
 ```
 
+### Date Handling with `@ts.Type`
+
+Use `@ts.Type { value = "Date" }` to generate date-aware Zod schemas instead of plain `z.string()`. By default this produces `z.coerce.date()`, which coerces string inputs into `Date` objects.
+
+Add the optional `format` field to validate date strings without coercion:
+
+| Format | Zod Output | Validates |
+|--------|-----------|-----------|
+| _(none)_ | `z.coerce.date()` | Any date-parseable string, coerced to `Date` |
+| `"date"` | `z.iso.date()` | `YYYY-MM-DD` |
+| `"datetime"` | `z.iso.datetime()` | ISO 8601 datetime |
+| `"time"` | `z.iso.time()` | `HH:MM:SS` |
+
+```pkl
+class Timestamps {
+  @ts.Type { value = "Date" }
+  createdAt: String                       // → z.coerce.date()
+
+  @ts.Type { value = "Date"; format = "datetime" }
+  updatedAt: String                       // → z.iso.datetime()
+
+  @ts.Type { value = "Date"; format = "date" }
+  birthDate: String                       // → z.iso.date()
+
+  @ts.Type { value = "Date"; format = "time" }
+  alarmTime: String                       // → z.iso.time()
+
+  @ts.Type { value = "Date" }
+  deletedAt: String?                      // → z.coerce.date().nullable().optional()
+}
+```
+
+The TypeScript generator renders all of these as `Date` (or `Date | null` for nullable fields).
+
 ### Discriminated Unions with `@ts.Union`
 
 Mark an abstract class with `@ts.Union` to generate a discriminated union type instead of an interface. Each child class must narrow the discriminator field using a **type annotation** (`: "value"`), not a value assignment (`= "value"`).
 
 ```pkl
-import "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.4#/ts.pkl"
+import "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.5#/ts.pkl"
 
 @ts.Union { discriminator = "kind" }
 abstract class Shape {
@@ -239,7 +273,7 @@ amends "pkl:Project"
 
 dependencies {
   ["pkl.typescript"] {
-    uri = "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.4"
+    uri = "package://pkg.pkl-lang.org/github.com/bmurray/pkl-typescript/pkl.typescript@0.2.5"
   }
 }
 ```

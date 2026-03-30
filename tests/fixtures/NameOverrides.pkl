@@ -22,10 +22,14 @@ class server_config {
 class Timestamps {
   @ts.Type { value = "Date" }
   createdAt: String
-  @ts.Type { value = "Date" }
+  @ts.Type { value = "Date"; format = "datetime" }
   updatedAt: String
-  @ts.Type { value = "Date | null" }
+  @ts.Type { value = "Date" }
   deletedAt: String?
+  @ts.Type { value = "Date"; format = "date" }
+  birthDate: String
+  @ts.Type { value = "Date"; format = "time" }
+  alarmTime: String
 }
 
 @ts.Name { value = "APIResponse" }

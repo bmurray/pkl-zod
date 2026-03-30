@@ -6,6 +6,7 @@ import "pkl:reflect"
 
 import "../../internal/TsMapping.pkl"
 import "../../internal/utils.pkl"
+import "../../ts.pkl"
 import "zodtypegen.pkl"
 
 /// The mapping for this class.
@@ -119,7 +120,7 @@ function getOwnFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<Stri
       )
       .mapValues((_, prop: reflect.Property) -> new ZodField {
         name = utils.toTsPropertyName(prop)
-        zodType = zodtypegen.generateZodType(prop.type, clazz, mappings)
+        zodType = resolveZodType(prop, clazz, mappings)
       })
 
 /// Get all fields (own + inherited) for a class, used when parent is a @ts.Union.
@@ -163,8 +164,40 @@ function getAllFields(clazz: reflect.Class, mappings: List<TsMapping>): Map<Stri
       )
       .mapValues((_, prop: reflect.Property) -> new ZodField {
         name = utils.toTsPropertyName(prop)
-        zodType = zodtypegen.generateZodType(prop.type, clazz, mappings)
+        zodType = resolveZodType(prop, clazz, mappings)
       })
+
+/// Resolve the Zod type for a property, respecting @ts.Type overrides.
+local function resolveZodType(
+  prop: reflect.Property,
+  enclosing: reflect.Class,
+  seenMappings: List<TsMapping>
+): String =
+  let (
+    typeOverride = prop.annotations
+      .findOrNull((it) -> it.getClass().toString() == "pkl.typescript.ts#Type")
+  )
+    // noinspection UnresolvedElement
+    if (typeOverride != null && typeOverride.value == "Date")
+      // noinspection UnresolvedElement
+      let (fmt = typeOverride.format)
+      let (
+        baseZodType =
+          if (fmt == null)
+            "z.coerce.date()"
+          else if (fmt == "date")
+            "z.iso.date()"
+          else if (fmt == "datetime")
+            "z.iso.datetime()"
+          else
+            "z.iso.time()"
+      )
+        if (prop.type is reflect.NullableType)
+          "\(baseZodType).nullable().optional()"
+        else
+          baseZodType
+    else
+      zodtypegen.generateZodType(prop.type, enclosing, seenMappings)
 
 /// Render object fields as Zod properties.
 local function renderFields(fields: Map<String, ZodField>): String =
